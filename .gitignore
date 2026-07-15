@@ -18,3 +18,5 @@
 *.log
 .settings/
 .vscode/
+.omo
+doc
