@@ -37,7 +37,7 @@ android {
     compileSdkVersion versions.compile
     buildToolsVersion versions.buildTool
     defaultConfig {
-        applicationId "org.autojs.autojs"
+        applicationId "com.jy.recorder"
         minSdkVersion versions.mini
         targetSdkVersion versions.target
         versionCode versions.appVersionCode
@@ -49,7 +49,7 @@ android {
         javaCompileOptions {
             annotationProcessorOptions {
                 arguments = [
-                        "resourcePackageName": android.defaultConfig.applicationId
+                        "resourcePackageName": "org.autojs.autojs"
                 ]
             }
         }
