@@ -11,7 +11,7 @@ GLOBAL_DIR="${HOME}/.config/opencode/skills/${SKILL_NAME}"
 
 echo "🔌 AutoX.js Connector Skill - 全局安装"
 echo ""
-echo "来源: ${SOURCE_DIR}"
+echo "来源: ${SOURCE_DIR}  (项目路径: ai/skills/autoxjs-connector/)"
 echo "目标: ${GLOBAL_DIR}"
 echo ""
 

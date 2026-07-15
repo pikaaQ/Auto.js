@@ -18,19 +18,19 @@ pip install websockets
 技能默认只在当前项目加载。全局安装后可在所有 opencode 项目中使用：
 
 ```bash
-# 方法一：使用安装脚本（符号链接，与项目源码保持同步）
-bash .opencode/skills/autoxjs-connector/install.sh
+# 方法一：使用安装脚本（推荐 — 符号链接，与项目源码保持同步）
+bash ai/skills/autoxjs-connector/install.sh
 
 # 方法二：手动复制
 mkdir -p ~/.config/opencode/skills
-cp -r .opencode/skills/autoxjs-connector ~/.config/opencode/skills/
+cp -r ai/skills/autoxjs-connector ~/.config/opencode/skills/
 ```
 
 安装后**重启 opencode** 使技能生效。
 
-### 只对当前项目生效（无需安装）
+### 只对当前项目生效（无需安装，不推荐）
 
-技能已在本项目的 `.opencode/skills/autoxjs-connector/` 下，opencode 在项目目录中启动时自动发现。
+技能源码在本项目的 `ai/skills/autoxjs-connector/` 下。要让 opencode 发现它，需要全局安装（见上方）或将 `ai/skills` 添加到 opencode 配置的 `skills.paths` 中。
 
 ### 验证安装
 
@@ -73,12 +73,12 @@ question:
 
 使用 `nohup` 在后台启动 WebSocket 服务端：
 ```bash
-nohup python3 .opencode/skills/autoxjs-connector/server.py --port 9317 --host 0.0.0.0 > /tmp/autoxjs-server.log 2>&1 &
+nohup python3 ai/skills/autoxjs-connector/server.py --port 9317 --host 0.0.0.0 > /tmp/autoxjs-server.log 2>&1 &
 ```
 
 验证启动：
 ```bash
-python3 .opencode/skills/autoxjs-connector/server.py --send '{"cmd":"status"}' --port 9317
+python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"status"}' --port 9317
 ```
 输出应包含 `"ws": "ws://0.0.0.0:9317"`。若失败则报错并终止。
 
@@ -113,7 +113,7 @@ options:
 
 用户点击"我已连接"后，检查连接状态：
 ```bash
-python3 .opencode/skills/autoxjs-connector/server.py --send '{"cmd":"status"}' --port 9317
+python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"status"}' --port 9317
 ```
 
 解析返回 JSON：
@@ -139,7 +139,7 @@ python3 .opencode/skills/autoxjs-connector/server.py --send '{"cmd":"status"}' -
 
 ### 截图
 ```bash
-python3 .opencode/skills/autoxjs-connector/server.py --send '{"cmd":"screenshot"}' --port 9317
+python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"screenshot"}' --port 9317
 ```
 返回包含 `local_path`（本地保存路径）。截图后可配合 `look_at` 分析截图内容。
 
@@ -147,23 +147,23 @@ python3 .opencode/skills/autoxjs-connector/server.py --send '{"cmd":"screenshot"
 
 先截图 → 再用 `look_at` 分析截图 → 同时 dump 组件树：
 ```bash
-python3 .opencode/skills/autoxjs-connector/server.py --send '{"cmd":"dump"}' --port 9317
+python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"dump"}' --port 9317
 ```
 
 ### 执行脚本（等待结果）
 ```bash
-python3 .opencode/skills/autoxjs-connector/server.py --send '{"cmd":"exec","script":"console.log(\"hello\")"}' --port 9317
+python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"exec","script":"console.log(\"hello\")"}' --port 9317
 ```
 
 ### 推送脚本（fire-and-forget）
 标准 VSCode 协议命令，手机不回 `command_result`，必须用 `"wait":false`：
 ```bash
-python3 .opencode/skills/autoxjs-connector/server.py --send '{"cmd":"run","script":"...","name":"test.js","wait":false}' --port 9317
+python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"run","script":"...","name":"test.js","wait":false}' --port 9317
 ```
 
 ### 拉取文件
 ```bash
-python3 .opencode/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file","path":"/sdcard/screenshot.png"}' --port 9317
+python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file","path":"/sdcard/screenshot.png"}' --port 9317
 ```
 
 ## 连接断开处理
@@ -176,7 +176,7 @@ python3 .opencode/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file",
 ## 终止
 
 任务完成或用户终止时：
-1. 发 shutdown 命令：`` python3 .opencode/skills/autoxjs-connector/server.py --send '{"cmd":"shutdown"}' --port 9317 ``
+1. 发 shutdown 命令：`` python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"shutdown"}' --port 9317 ``
 2. 告知用户已断开
 
 ## 协议参考
@@ -189,7 +189,7 @@ python3 .opencode/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file",
 
 也可通过 `--send` 命令行快捷发送，`--port` 会自动推导控制端口（port + 10000）：
 ```bash
-python3 .opencode/skills/autoxjs-connector/server.py --send '{"cmd":"screenshot"}' --port 9317
+python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"screenshot"}' --port 9317
 ```
 
 可用命令列表：
