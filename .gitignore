@@ -19,4 +19,4 @@
 .settings/
 .vscode/
 .omo
-doc
+doc__pycache__/
