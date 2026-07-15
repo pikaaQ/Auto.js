@@ -73,6 +73,11 @@ public class JsonWebSocket extends WebSocketListener {
         return mWebSocket.send(json);
     }
 
+    public boolean sendBytes(ByteString data) {
+        Log.d(LOG_TAG, "sendBytes: length = " + data.size());
+        return mWebSocket.send(data);
+    }
+
     public void close() {
         mJsonElementPublishSubject.onComplete();
         mClosed = true;

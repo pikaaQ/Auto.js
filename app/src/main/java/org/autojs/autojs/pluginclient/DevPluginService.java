@@ -29,6 +29,7 @@ import io.reactivex.android.schedulers.AndroidSchedulers;
 import io.reactivex.subjects.PublishSubject;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okio.ByteString;
 
 /**
  * Created by Stardust on 2017/5/11.
@@ -298,5 +299,37 @@ public class DevPluginService {
         if (!isConnected())
             return;
         writePair(mSocket, "log", new Pair<>("log", log));
+    }
+
+    @AnyThread
+    public boolean sendCommandResult(String commandId, boolean success, JsonObject result) {
+        if (!isConnected())
+            return false;
+        JsonObject data = new JsonObject();
+        data.addProperty("command_id", commandId);
+        data.addProperty("success", success);
+        if (result != null) {
+            data.add("result", result);
+        }
+        return write(mSocket, "command_result", data);
+    }
+
+    @AnyThread
+    public boolean sendCommandResult(String commandId, boolean success) {
+        return sendCommandResult(commandId, success, null);
+    }
+
+    @AnyThread
+    public boolean sendNullResult(String commandId, boolean success, String message) {
+        JsonObject result = new JsonObject();
+        result.addProperty("message", message);
+        return sendCommandResult(commandId, success, result);
+    }
+
+    @AnyThread
+    public boolean sendBytes(ByteString bytes) {
+        if (!isConnected())
+            return false;
+        return mSocket.sendBytes(bytes);
     }
 }
