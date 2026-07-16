@@ -1,10 +1,14 @@
 package org.autojs.autojs.ui.main.drawer;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.app.AppOpsManager;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.preference.PreferenceManager;
 import android.provider.Settings;
 import android.util.Log;
@@ -14,6 +18,9 @@ import android.widget.Toast;
 import com.afollestad.materialdialogs.MaterialDialog;
 import com.stardust.app.AppOpsKt;
 import com.stardust.app.GlobalAppContext;
+import com.stardust.autojs.core.image.capture.GlobalScreenCapture;
+import com.stardust.autojs.core.image.capture.ScreenCaptureRequestActivity;
+import com.stardust.autojs.core.image.capture.ScreenCaptureRequester;
 import com.stardust.autojs.shizuku.WrappedShizuku;
 import com.stardust.notification.NotificationListenerService;
 import com.stardust.theme.ThemeColorManager;
@@ -99,6 +106,8 @@ public class DrawerFragment extends androidx.fragment.app.Fragment {
     private DrawerMenuItem mUsageStatsPermissionItem = new DrawerMenuItem(R.drawable.ic_ali_notification, R.string.text_usage_stats_permission, 0, this::goToUsageStatsSettings);
     private DrawerMenuItem mForegroundServiceItem = new DrawerMenuItem(R.drawable.ic_service_green, R.string.text_foreground_service, R.string.key_foreground_servie, this::toggleForegroundService);
 
+    private DrawerMenuItem mScreenCaptureItem = new DrawerMenuItem(R.drawable.ic_screenshot, R.string.text_screen_capture, R.string.key_screen_capture, this::toggleScreenCapture);
+
     private DrawerMenuItem mFloatingWindowItem = new DrawerMenuItem(R.drawable.ic_robot_64, R.string.text_floating_window, 0, this::showOrDismissFloatingWindow);
 
 
@@ -147,6 +156,7 @@ public class DrawerFragment extends androidx.fragment.app.Fragment {
                 mStableModeItem,
                 mNotificationPermissionItem,
                 mForegroundServiceItem,
+                mScreenCaptureItem,
                 mUsageStatsPermissionItem,
 
                 new DrawerMenuGroup(R.string.text_script_record),
@@ -319,6 +329,31 @@ public class DrawerFragment extends androidx.fragment.app.Fragment {
             ForegroundService.start(GlobalAppContext.get());
         } else {
             ForegroundService.stop(GlobalAppContext.get());
+        }
+    }
+
+    @SuppressLint("WrongConstant")
+    private void toggleScreenCapture(DrawerMenuItemViewHolder holder) {
+        boolean checked = holder.getSwitchCompat().isChecked();
+        if (checked) {
+            if (GlobalScreenCapture.getInstance().hasPermission()) {
+                return;
+            }
+            ScreenCaptureRequester.Callback callback = (result, data) -> {
+                if (result == Activity.RESULT_OK && data != null) {
+                    new Thread(() -> {
+                        try {
+                            GlobalScreenCapture.getInstance().initCapture(
+                                    getContext(), data, Configuration.ORIENTATION_UNDEFINED);
+                        } catch (Exception ignored) {
+                        }
+                    }).start();
+                } else {
+                    setChecked(mScreenCaptureItem, false);
+                }
+            };
+            new Handler(Looper.getMainLooper()).post(
+                    () -> ScreenCaptureRequestActivity.request(requireContext(), callback));
         }
     }
 
