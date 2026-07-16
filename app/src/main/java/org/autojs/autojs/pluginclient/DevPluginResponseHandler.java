@@ -234,20 +234,27 @@ public class DevPluginResponseHandler implements Handler {
     }
 
     private void doCaptureAndSend(String id) {
+        String tempPath = mCacheDir.getAbsolutePath() + "/screenshot_" + id + ".png";
+        File tempFile = new File(tempPath);
+        boolean sent = false;
         try {
             Image image = GlobalScreenCapture.getInstance().capture();
             Bitmap bitmap = ImageWrapper.toBitmap(image);
-            String tempPath = mCacheDir.getAbsolutePath() + "/screenshot_" + id + ".png";
-            new File(tempPath).getParentFile().mkdirs();
+            tempFile.getParentFile().mkdirs();
             FileOutputStream fos = new FileOutputStream(tempPath);
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
             fos.close();
             bitmap.recycle();
             image.close();
             sendScreenshotFile(id, tempPath);
+            sent = true;
         } catch (Exception e) {
             DevPluginService.getInstance().sendCommandResult(id, false,
                     json("error", e.getMessage() != null ? e.getMessage() : "capture failed"));
+        } finally {
+            if (!sent && tempFile.exists()) {
+                tempFile.delete();
+            }
         }
     }
 
@@ -275,10 +282,11 @@ public class DevPluginResponseHandler implements Handler {
                     result.addProperty("md5", md5);
                     result.addProperty("size", data.length);
                     DevPluginService.getInstance().sendCommandResult(id, true, result);
-                }, error ->
-                        DevPluginService.getInstance().sendCommandResult(id, false,
-                                json("error", error.getMessage() != null ? error.getMessage() : "file read failed"))
-                );
+                }, error -> {
+                    file.delete();
+                    DevPluginService.getInstance().sendCommandResult(id, false,
+                            json("error", error.getMessage() != null ? error.getMessage() : "file read failed"));
+                });
     }
 
     // ─── dump ──────────────────────────────────────────
