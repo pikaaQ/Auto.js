@@ -28,6 +28,7 @@ import org.mozilla.javascript.ast.Loop;
 
 import java.util.Iterator;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
@@ -288,8 +289,8 @@ public class GlobalScreenCapture {
                 long waitStart = System.currentTimeMillis();
                 captureLock.lock();
                 try {
-                    captureComplete.await();
-                    Log.d(TAG, "capture: 获取到截图信号，等待耗时：" + (System.currentTimeMillis() - waitStart) + "ms");
+                    captureComplete.await(2, TimeUnit.SECONDS);
+                    Log.d(TAG, "capture: 获取到截图信号或超时，等待耗时：" + (System.currentTimeMillis() - waitStart) + "ms");
                     cachedImage = getCachedImage();
                     if (cachedImage != null) {
                         return cachedImage;
