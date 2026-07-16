@@ -6,7 +6,6 @@ import android.content.Intent;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.media.Image;
-import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
 
@@ -228,7 +227,7 @@ public class DevPluginResponseHandler implements Handler {
                         json("error", "user denied screen capture permission"));
             }
         };
-        new Handler(Looper.getMainLooper()).post(
+        new android.os.Handler(Looper.getMainLooper()).post(
                 () -> ScreenCaptureRequestActivity.request(GlobalAppContext.get(), callback));
     }
 
