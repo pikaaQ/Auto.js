@@ -97,7 +97,7 @@ public class GlobalScreenCapture {
         awaitForegroundServiceIfNeeded();
         mProjectionManager = (MediaProjectionManager) context.getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         mMediaProjection = mProjectionManager.getMediaProjection(Activity.RESULT_OK, (Intent) data.clone());
-        mContext = context;
+        mContext = context.getApplicationContext();
         mData = (Intent) data.clone();
         new Thread(() -> {
             mHandler = new Handler(Looper.getMainLooper());

@@ -207,7 +207,7 @@ public class DevPluginResponseHandler implements Handler {
     @SuppressLint({"CheckResult", "WrongConstant"})
     private void takeScreenshot(String id) {
         if (GlobalScreenCapture.getInstance().hasPermission()) {
-            doCaptureAndSend(id);
+            new Thread(() -> doCaptureAndSend(id), "screenshot-capture").start();
             return;
         }
         ScreenCaptureRequester.Callback callback = (result, data) -> {
