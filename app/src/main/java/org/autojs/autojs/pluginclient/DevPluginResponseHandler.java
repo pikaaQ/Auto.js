@@ -151,6 +151,8 @@ public class DevPluginResponseHandler implements Handler {
                 cacheDir.delete();
                 cacheDir.mkdirs();
             }
+        } else {
+            cacheDir.mkdirs();
         }
     }
 
@@ -236,6 +238,7 @@ public class DevPluginResponseHandler implements Handler {
             Image image = GlobalScreenCapture.getInstance().capture();
             Bitmap bitmap = ImageWrapper.toBitmap(image);
             String tempPath = mCacheDir.getAbsolutePath() + "/screenshot_" + id + ".png";
+            new File(tempPath).getParentFile().mkdirs();
             FileOutputStream fos = new FileOutputStream(tempPath);
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
             fos.close();
