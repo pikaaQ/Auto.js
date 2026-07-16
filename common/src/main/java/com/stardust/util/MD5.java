@@ -15,8 +15,24 @@ public class MD5 {
         }
     }
 
+    public static byte[] md5Bytes(byte[] data) {
+        try {
+            MessageDigest md5 = MessageDigest.getInstance("MD5");
+            return md5.digest(data);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public static String md5(String message) {
-        byte[] bytes = md5Bytes(message);
+        return bytesToHex(md5Bytes(message));
+    }
+
+    public static String md5(byte[] data) {
+        return bytesToHex(md5Bytes(data));
+    }
+
+    private static String bytesToHex(byte[] bytes) {
         StringBuilder hexString = new StringBuilder(32);
         for (byte b : bytes) {
             String hex = Integer.toHexString(0xFF & b);
@@ -26,7 +42,5 @@ public class MD5 {
             hexString.append(hex);
         }
         return hexString.toString();
-
-
     }
 }

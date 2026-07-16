@@ -165,6 +165,8 @@ public class DevPluginResponseHandler implements Handler {
     @SuppressLint("CheckResult")
     private void execScript(String id, String script) {
         try {
+            ExecutionConfig config = new ExecutionConfig();
+            config.setWorkingDirectory(Pref.getScriptDirPath());
             AutoJs.getInstance().getScriptEngineService().execute(
                     new StringScriptSource("[exec]" + id, script),
                     new SimpleScriptExecutionListener() {
@@ -183,7 +185,7 @@ public class DevPluginResponseHandler implements Handler {
                                     json("error", e.getMessage() != null ? e.getMessage() : "unknown error"));
                         }
                     },
-                    new ExecutionConfig(Pref.getScriptDirPath()));
+                    config);
         } catch (Exception e) {
             DevPluginService.getInstance().sendCommandResult(id, false,
                     json("error", e.getMessage() != null ? e.getMessage() : "execution failed"));
@@ -199,6 +201,8 @@ public class DevPluginResponseHandler implements Handler {
         String captureScript = "var img = images.captureScreen(); if(img){img.saveTo('" + tempPath + "');img.recycle();}";
 
         try {
+            ExecutionConfig config = new ExecutionConfig();
+            config.setWorkingDirectory(Pref.getScriptDirPath());
             AutoJs.getInstance().getScriptEngineService().execute(
                     new StringScriptSource("[screenshot]" + id, captureScript),
                     new SimpleScriptExecutionListener() {
@@ -213,7 +217,7 @@ public class DevPluginResponseHandler implements Handler {
                                     json("error", e.getMessage() != null ? e.getMessage() : "screenshot failed"));
                         }
                     },
-                    new ExecutionConfig(Pref.getScriptDirPath()));
+                    config);
         } catch (Exception e) {
             DevPluginService.getInstance().sendCommandResult(id, false,
                     json("error", e.getMessage() != null ? e.getMessage() : "screenshot execution failed"));
