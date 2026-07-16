@@ -94,7 +94,7 @@ public class GlobalScreenCapture {
         if (mScreenDensity == 0) {
             mScreenDensity = ScreenMetrics.getDeviceScreenDensity();
         }
-        awaitForegroundServiceIfNeeded();
+        ensureForegroundService();
         mProjectionManager = (MediaProjectionManager) context.getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         mMediaProjection = mProjectionManager.getMediaProjection(Activity.RESULT_OK, (Intent) data.clone());
         mContext = context.getApplicationContext();
@@ -117,8 +117,9 @@ public class GlobalScreenCapture {
         hasPermission = true;
     }
 
-    private void awaitForegroundServiceIfNeeded() {
+    private void ensureForegroundService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !foregroundServiceStarted) {
+            mContext.startForegroundService(new Intent(mContext, CaptureForegroundService.class));
             try {
                 this.wait();
             } catch (InterruptedException e) {
@@ -141,8 +142,7 @@ public class GlobalScreenCapture {
             return false;
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !foregroundServiceStarted) {
             // 前台服务可能丢失，重新获取
-            mContext.startForegroundService(new Intent(mContext, CaptureForegroundService.class));
-            awaitForegroundServiceIfNeeded();
+            ensureForegroundService();
             return foregroundServiceStarted;
         }
         return true;
