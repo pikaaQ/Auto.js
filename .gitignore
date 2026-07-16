@@ -19,4 +19,5 @@
 .settings/
 .vscode/
 .omo
-doc__pycache__/
+doc
+__pycache__/
