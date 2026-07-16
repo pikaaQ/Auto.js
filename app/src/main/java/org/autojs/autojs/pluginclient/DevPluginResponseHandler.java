@@ -1,12 +1,23 @@
 package org.autojs.autojs.pluginclient;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.content.Intent;
+import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.media.Image;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.TextUtils;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.stardust.app.GlobalAppContext;
+import com.stardust.autojs.core.image.ImageWrapper;
+import com.stardust.autojs.core.image.capture.GlobalScreenCapture;
+import com.stardust.autojs.core.image.capture.ScreenCaptureRequestActivity;
+import com.stardust.autojs.core.image.capture.ScreenCaptureRequester;
 import com.stardust.autojs.execution.ExecutionConfig;
 import com.stardust.autojs.execution.ScriptExecution;
 import com.stardust.autojs.execution.SimpleScriptExecutionListener;
@@ -194,33 +205,47 @@ public class DevPluginResponseHandler implements Handler {
 
     // ─── screenshot ────────────────────────────────────
 
-    @SuppressLint("CheckResult")
+    @SuppressLint({"CheckResult", "WrongConstant"})
     private void takeScreenshot(String id) {
-        // Use script execution to capture screen via the runtime API
-        String tempPath = mCacheDir.getAbsolutePath() + "/screenshot_" + id + ".png";
-        String captureScript = "var img = images.captureScreen(); if(img){img.saveTo('" + tempPath + "');img.recycle();}";
+        if (GlobalScreenCapture.getInstance().hasPermission()) {
+            doCaptureAndSend(id);
+            return;
+        }
+        ScreenCaptureRequester.Callback callback = (result, data) -> {
+            if (result == Activity.RESULT_OK && data != null) {
+                new Thread(() -> {
+                    try {
+                        GlobalScreenCapture.getInstance().initCapture(
+                                GlobalAppContext.get(), data, Configuration.ORIENTATION_UNDEFINED);
+                        doCaptureAndSend(id);
+                    } catch (Exception e) {
+                        DevPluginService.getInstance().sendCommandResult(id, false,
+                                json("error", e.getMessage() != null ? e.getMessage() : "capture init failed"));
+                    }
+                }).start();
+            } else {
+                DevPluginService.getInstance().sendCommandResult(id, false,
+                        json("error", "user denied screen capture permission"));
+            }
+        };
+        new Handler(Looper.getMainLooper()).post(
+                () -> ScreenCaptureRequestActivity.request(GlobalAppContext.get(), callback));
+    }
 
+    private void doCaptureAndSend(String id) {
         try {
-            ExecutionConfig config = new ExecutionConfig();
-            config.setWorkingDirectory(Pref.getScriptDirPath());
-            AutoJs.getInstance().getScriptEngineService().execute(
-                    new StringScriptSource("[screenshot]" + id, captureScript),
-                    new SimpleScriptExecutionListener() {
-                        @Override
-                        public void onSuccess(ScriptExecution execution, Object result) {
-                            sendScreenshotFile(id, tempPath);
-                        }
-
-                        @Override
-                        public void onException(ScriptExecution execution, Throwable e) {
-                            DevPluginService.getInstance().sendCommandResult(id, false,
-                                    json("error", e.getMessage() != null ? e.getMessage() : "screenshot failed"));
-                        }
-                    },
-                    config);
+            Image image = GlobalScreenCapture.getInstance().capture();
+            Bitmap bitmap = ImageWrapper.toBitmap(image);
+            String tempPath = mCacheDir.getAbsolutePath() + "/screenshot_" + id + ".png";
+            FileOutputStream fos = new FileOutputStream(tempPath);
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
+            fos.close();
+            bitmap.recycle();
+            image.close();
+            sendScreenshotFile(id, tempPath);
         } catch (Exception e) {
             DevPluginService.getInstance().sendCommandResult(id, false,
-                    json("error", e.getMessage() != null ? e.getMessage() : "screenshot execution failed"));
+                    json("error", e.getMessage() != null ? e.getMessage() : "capture failed"));
         }
     }
 
