@@ -305,8 +305,12 @@ public class GlobalScreenCapture {
             if (System.currentTimeMillis() - startTime > 1000) {
                 startTime = System.currentTimeMillis();
                 Log.d(TAG, "capture: 获取截图失败，刷新virtualDisplay");
-                this.grantMediaProjection();
-                this.refreshVirtualDisplay(getOrientation());
+                if (mVirtualDisplay == null && mMediaProjection != null) {
+                    this.refreshVirtualDisplay(getOrientation());
+                } else {
+                    this.grantMediaProjection();
+                    this.refreshVirtualDisplay(getOrientation());
+                }
                 if (retryLimit-- <= 0) {
                     Log.d(TAG, "capture: 获取截图异常，重试多次失败 退出");
                     break;
