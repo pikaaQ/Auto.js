@@ -42,6 +42,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 
 import io.reactivex.Observable;
 import io.reactivex.android.schedulers.AndroidSchedulers;
@@ -208,29 +209,36 @@ public class DevPluginResponseHandler implements Handler {
 
     @SuppressLint({"CheckResult", "WrongConstant"})
     private void takeScreenshot(String id) {
-        if (GlobalScreenCapture.getInstance().hasPermission()) {
-            new Thread(() -> doCaptureAndSend(id), "screenshot-capture").start();
-            return;
-        }
-        ScreenCaptureRequester.Callback callback = (result, data) -> {
-            if (result == Activity.RESULT_OK && data != null) {
-                new Thread(() -> {
-                    try {
-                        GlobalScreenCapture.getInstance().initCapture(
-                                GlobalAppContext.get(), data, Configuration.ORIENTATION_UNDEFINED);
-                        doCaptureAndSend(id);
-                    } catch (Exception e) {
-                        DevPluginService.getInstance().sendCommandResult(id, false,
-                                json("error", e.getMessage() != null ? e.getMessage() : "capture init failed"));
-                    }
-                }).start();
-            } else {
-                DevPluginService.getInstance().sendCommandResult(id, false,
-                        json("error", "user denied screen capture permission"));
+        new Thread(() -> {
+            if (GlobalScreenCapture.getInstance().hasPermission()) {
+                doCaptureAndSend(id);
+                return;
             }
-        };
-        new android.os.Handler(Looper.getMainLooper()).post(
-                () -> ScreenCaptureRequestActivity.request(GlobalAppContext.get(), callback));
+            CountDownLatch latch = new CountDownLatch(1);
+            ScreenCaptureRequester.Callback[] callbackHolder = new ScreenCaptureRequester.Callback[1];
+            callbackHolder[0] = (result, data) -> {
+                if (result == Activity.RESULT_OK && data != null) {
+                    new Thread(() -> {
+                        try {
+                            GlobalScreenCapture.getInstance().initCapture(
+                                    GlobalAppContext.get(), data, Configuration.ORIENTATION_UNDEFINED);
+                            doCaptureAndSend(id);
+                        } catch (Exception e) {
+                            DevPluginService.getInstance().sendCommandResult(id, false,
+                                    json("error", e.getMessage() != null ? e.getMessage() : "capture init failed"));
+                        } finally {
+                            latch.countDown();
+                        }
+                    }).start();
+                } else {
+                    DevPluginService.getInstance().sendCommandResult(id, false,
+                            json("error", "user denied screen capture permission"));
+                    latch.countDown();
+                }
+            };
+            new android.os.Handler(Looper.getMainLooper()).post(
+                    () -> ScreenCaptureRequestActivity.request(GlobalAppContext.get(), callbackHolder[0]));
+        }, "screenshot-work").start();
     }
 
     private void doCaptureAndSend(String id) {
@@ -239,15 +247,20 @@ public class DevPluginResponseHandler implements Handler {
         boolean sent = false;
         try {
             Image image = GlobalScreenCapture.getInstance().capture();
-            Bitmap bitmap = ImageWrapper.toBitmap(image);
-            tempFile.getParentFile().mkdirs();
-            FileOutputStream fos = new FileOutputStream(tempPath);
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
-            fos.close();
-            bitmap.recycle();
-            image.close();
-            sendScreenshotFile(id, tempPath);
-            sent = true;
+            if (image != null) {
+                Bitmap bitmap = ImageWrapper.toBitmap(image);
+                tempFile.getParentFile().mkdirs();
+                FileOutputStream fos = new FileOutputStream(tempPath);
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
+                fos.close();
+                bitmap.recycle();
+                image.close();
+                sendScreenshotFile(id, tempPath);
+                sent = true;
+            } else {
+                DevPluginService.getInstance().sendCommandResult(id, false,
+                        json("error", "capture returned null"));
+            }
         } catch (Exception e) {
             DevPluginService.getInstance().sendCommandResult(id, false,
                     json("error", e.getMessage() != null ? e.getMessage() : "capture failed"));
