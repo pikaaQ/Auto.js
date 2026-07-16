@@ -94,11 +94,11 @@ public class GlobalScreenCapture {
         if (mScreenDensity == 0) {
             mScreenDensity = ScreenMetrics.getDeviceScreenDensity();
         }
+        mContext = context.getApplicationContext();
+        mData = (Intent) data.clone();
         ensureForegroundService();
         mProjectionManager = (MediaProjectionManager) context.getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         mMediaProjection = mProjectionManager.getMediaProjection(Activity.RESULT_OK, (Intent) data.clone());
-        mContext = context.getApplicationContext();
-        mData = (Intent) data.clone();
         new Thread(() -> {
             mHandler = new Handler(Looper.getMainLooper());
             synchronized (GlobalScreenCapture.this) {
