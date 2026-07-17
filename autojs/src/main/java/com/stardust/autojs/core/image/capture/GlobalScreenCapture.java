@@ -343,7 +343,7 @@ public class GlobalScreenCapture {
 
     public synchronized void unregister(ScriptRuntime runtime) {
         Log.d(TAG, "unregister: " + runtime);
-        registeredRuntimes.remove(runtime);
+        Boolean wasRegistered = registeredRuntimes.remove(runtime);
         Iterator<ScriptRuntime> keyRuntime = registeredRuntimes.keySet().iterator();
         while (keyRuntime.hasNext()) {
             ScriptRuntime scriptRuntime = keyRuntime.next();
@@ -353,7 +353,7 @@ public class GlobalScreenCapture {
             }
         }
         noRegister = registeredRuntimes.size() == 0;
-        if (noRegister) {
+        if (noRegister && wasRegistered != null) {
             Log.d(TAG, "全部引擎已注销，释放截图权限，清除通知");
             release();
         }
