@@ -8,6 +8,7 @@ import android.graphics.Bitmap;
 import android.media.Image;
 import android.os.Looper;
 import android.text.TextUtils;
+import android.util.Log;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
