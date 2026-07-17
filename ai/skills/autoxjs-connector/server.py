@@ -271,9 +271,14 @@ class AutoJSServer:
             path = result.get("result", {}).get("path", "")
             img_data = self.device.take_bytes(md5) if md5 else None
             if img_data:
-                save_path = self.workspace / path
+                # path 是手机上的绝对路径，只取文件名
+                from pathlib import Path as PPath
+                save_path = self.workspace / PPath(path).name
                 save_path.write_bytes(img_data)
                 result["result"]["local_path"] = str(save_path)
+                result["result"]["local_size"] = len(img_data)
+            else:
+                result["warning"] = "binary data not received via WebSocket"
         return result
 
     async def dump_ui(self) -> dict:
@@ -340,8 +345,12 @@ class AutoJSServer:
                 resp = await self._handle_ctrl_command(req)
                 writer.write((json.dumps(resp, ensure_ascii=False) + "\n").encode())
                 await writer.drain()
-        except Exception:
-            pass
+        except Exception as e:
+            try:
+                writer.write((json.dumps({"error": f"server error: {e}"}) + "\n").encode())
+                await writer.drain()
+            except Exception:
+                pass
         finally:
             writer.close()
 
