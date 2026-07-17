@@ -205,15 +205,16 @@ public class GlobalScreenCapture {
         try {
             MediaProjection newMediaProjection = mProjectionManager.getMediaProjection(Activity.RESULT_OK, (Intent) mData.clone());
             if (newMediaProjection == null) {
-                Log.d(TAG, "grantMediaProjection: 获取新projection失败");
+                Log.e(TAG, "grantMediaProjection: getMediaProjection returned null");
                 return;
             }
+            Log.d(TAG, "grantMediaProjection: 成功获取新projection");
             if (mMediaProjection != null) {
                 mMediaProjection.stop();
             }
             mMediaProjection = newMediaProjection;
         } catch (Exception e) {
-            Log.d(TAG, "grantMediaProjection: 获取新projection失败 可能只是MIUI的bug " + e);
+            Log.e(TAG, "grantMediaProjection: 获取新projection失败 可能只是MIUI的bug " + e);
             release();
         }
     }
@@ -236,7 +237,7 @@ public class GlobalScreenCapture {
                     width, height, screenDensity, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                     mImageReader.getSurface(), null, null);
         } catch (SecurityException e) {
-            Log.d(TAG, "initVirtualDisplay: 获取virtualDisplay失败" + e);
+            Log.e(TAG, "initVirtualDisplay: createVirtualDisplay SecurityException: " + e);
             release();
         }
     }
