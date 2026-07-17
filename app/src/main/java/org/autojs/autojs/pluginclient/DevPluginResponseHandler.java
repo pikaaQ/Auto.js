@@ -21,6 +21,7 @@ import com.stardust.autojs.execution.ExecutionConfig;
 import com.stardust.autojs.execution.ScriptExecution;
 import com.stardust.autojs.execution.SimpleScriptExecutionListener;
 import com.stardust.autojs.project.ProjectLauncher;
+import com.stardust.autojs.runtime.exception.ScriptInterruptedException;
 import com.stardust.autojs.script.StringScriptSource;
 import com.stardust.io.Zip;
 import com.stardust.pio.PFiles;
@@ -210,43 +211,56 @@ public class DevPluginResponseHandler implements Handler {
     @SuppressLint({"CheckResult", "WrongConstant"})
     private void takeScreenshot(String id) {
         new Thread(() -> {
-            if (GlobalScreenCapture.getInstance().hasPermission()) {
-                doCaptureAndSend(id);
-                return;
-            }
-            CountDownLatch latch = new CountDownLatch(1);
-            ScreenCaptureRequester.Callback[] callbackHolder = new ScreenCaptureRequester.Callback[1];
-            callbackHolder[0] = (result, data) -> {
-                if (result == Activity.RESULT_OK && data != null) {
-                    new Thread(() -> {
-                        try {
-                            GlobalScreenCapture.getInstance().initCapture(
-                                    GlobalAppContext.get(), data, Configuration.ORIENTATION_UNDEFINED);
-                            doCaptureAndSend(id);
-                        } catch (Exception e) {
-                            DevPluginService.getInstance().sendCommandResult(id, false,
-                                    json("error", e.getMessage() != null ? e.getMessage() : "capture init failed"));
-                        } finally {
-                            latch.countDown();
-                        }
-                    }).start();
-                } else {
-                    DevPluginService.getInstance().sendCommandResult(id, false,
-                            json("error", "user denied screen capture permission"));
-                    latch.countDown();
+            Log.d(TAG, "takeScreenshot: id=" + id + " 开始处理截图请求");
+            try {
+                if (GlobalScreenCapture.getInstance().hasPermission()) {
+                    Log.d(TAG, "takeScreenshot: hasPermission=true，直接截图");
+                    doCaptureAndSend(id);
+                    return;
                 }
-            };
-            new android.os.Handler(Looper.getMainLooper()).post(
-                    () -> ScreenCaptureRequestActivity.request(GlobalAppContext.get(), callbackHolder[0]));
+                Log.d(TAG, "takeScreenshot: hasPermission=false，请求权限弹窗");
+                CountDownLatch latch = new CountDownLatch(1);
+                ScreenCaptureRequester.Callback[] callbackHolder = new ScreenCaptureRequester.Callback[1];
+                callbackHolder[0] = (result, data) -> {
+                    if (result == Activity.RESULT_OK && data != null) {
+                        new Thread(() -> {
+                            try {
+                                GlobalScreenCapture.getInstance().initCapture(
+                                        GlobalAppContext.get(), data, Configuration.ORIENTATION_UNDEFINED);
+                                doCaptureAndSend(id);
+                            } catch (Exception e) {
+                                Log.e(TAG, "takeScreenshot: initCapture 异常", e);
+                                DevPluginService.getInstance().sendCommandResult(id, false,
+                                        json("error", e.getMessage() != null ? e.getMessage() : "capture init failed"));
+                            } finally {
+                                latch.countDown();
+                            }
+                        }).start();
+                    } else {
+                        Log.w(TAG, "takeScreenshot: 用户拒绝了截图权限 result=" + result + " data=" + (data != null ? "valid" : "null"));
+                        DevPluginService.getInstance().sendCommandResult(id, false,
+                                json("error", "user denied screen capture permission"));
+                        latch.countDown();
+                    }
+                };
+                new android.os.Handler(Looper.getMainLooper()).post(
+                        () -> ScreenCaptureRequestActivity.request(GlobalAppContext.get(), callbackHolder[0]));
+            } catch (Exception e) {
+                Log.e(TAG, "takeScreenshot: 未知异常", e);
+                DevPluginService.getInstance().sendCommandResult(id, false,
+                        json("error", "screenshot failed: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())));
+            }
         }, "screenshot-work").start();
     }
 
     private void doCaptureAndSend(String id) {
+        Log.d(TAG, "doCaptureAndSend: id=" + id + " 开始截图流程，线程=" + Thread.currentThread().getName());
         String tempPath = mCacheDir.getAbsolutePath() + "/screenshot_" + id + ".png";
         File tempFile = new File(tempPath);
         boolean sent = false;
         try {
             Image image = GlobalScreenCapture.getInstance().capture();
+            Log.d(TAG, "doCaptureAndSend: capture返回 " + (image != null ? "有效图片" : "null"));
             if (image != null) {
                 Bitmap bitmap = ImageWrapper.toBitmap(image);
                 tempFile.getParentFile().mkdirs();
@@ -255,19 +269,27 @@ public class DevPluginResponseHandler implements Handler {
                 fos.close();
                 bitmap.recycle();
                 image.close();
+                Log.d(TAG, "doCaptureAndSend: 图片已保存到 " + tempPath + "，开始发送");
                 sendScreenshotFile(id, tempPath);
                 sent = true;
             } else {
+                Log.e(TAG, "doCaptureAndSend: capture返回null");
                 DevPluginService.getInstance().sendCommandResult(id, false,
                         json("error", "capture returned null"));
             }
+        } catch (ScriptInterruptedException e) {
+            Log.e(TAG, "doCaptureAndSend: ScriptInterruptedException 截图超时，可能30秒都未收到帧", e);
+            DevPluginService.getInstance().sendCommandResult(id, false,
+                    json("error", "screenshot timed out: no frame received in 30s"));
         } catch (Exception e) {
+            Log.e(TAG, "doCaptureAndSend: 异常", e);
             DevPluginService.getInstance().sendCommandResult(id, false,
                     json("error", e.getMessage() != null ? e.getMessage() : "capture failed"));
         } finally {
             if (!sent && tempFile.exists()) {
                 tempFile.delete();
             }
+            Log.d(TAG, "doCaptureAndSend: id=" + id + " 完成，sent=" + sent);
         }
     }
 

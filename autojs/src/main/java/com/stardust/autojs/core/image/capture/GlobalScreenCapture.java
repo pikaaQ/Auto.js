@@ -121,33 +121,50 @@ public class GlobalScreenCapture {
 
     private void ensureForegroundService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !foregroundServiceStarted) {
+            Log.d(TAG, "ensureForegroundService: 尝试启动前台服务 foregroundServiceStarted=" + foregroundServiceStarted);
             mContext.startForegroundService(new Intent(mContext, CaptureForegroundService.class));
+            Log.d(TAG, "ensureForegroundService: startForegroundService 已调用，等待 notifyStarted 通知");
             try {
-                this.wait();
+                this.wait(5000);
+                Log.d(TAG, "ensureForegroundService: 已收到通知/wait返回，foregroundServiceStarted=" + foregroundServiceStarted);
             } catch (InterruptedException e) {
+                Log.e(TAG, "ensureForegroundService: wait 被中断", e);
                 throw new ScriptInterruptedException();
             }
+            if (!foregroundServiceStarted) {
+                Log.e(TAG, "ensureForegroundService: 前台服务启动超时(5s)或失败，foregroundServiceStarted仍为false");
+            }
+        } else {
+            Log.d(TAG, "ensureForegroundService: 条件不满足，跳过 (Q=" + (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) + " fgStarted=" + foregroundServiceStarted + ")");
         }
     }
 
     public synchronized void notifyStarted() {
         this.foregroundServiceStarted = true;
+        Log.d(TAG, "notifyStarted: foregroundServiceStarted 已设为 true，通知等待线程");
         this.notify();
     }
 
     public void foregroundServiceDown() {
         this.foregroundServiceStarted = false;
+        Log.w(TAG, "foregroundServiceDown: 前台服务已停止");
     }
 
     public synchronized boolean hasPermission() {
+        boolean result;
         if (!hasPermission) {
-            return false;
+            Log.e(TAG, "hasPermission: hasPermission标志为false");
+            result = false;
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !foregroundServiceStarted) {
-            // 前台服务可能丢失，重新获取
+            Log.e(TAG, "hasPermission: 前台服务已丢失，尝试重新启动 foregroundServiceStarted=" + foregroundServiceStarted);
             ensureForegroundService();
-            return foregroundServiceStarted;
+            result = foregroundServiceStarted;
+            Log.d(TAG, "hasPermission: 重启前台服务后 foregroundServiceStarted=" + result);
+        } else {
+            result = true;
         }
-        return true;
+        Log.d(TAG, "hasPermission: 返回 " + result + " (hasPermission=" + hasPermission + " fgStarted=" + foregroundServiceStarted + ")");
+        return result;
     }
 
     public void setOrientation(int orientation) {
@@ -256,6 +273,8 @@ public class GlobalScreenCapture {
         mImageReader.setOnImageAvailableListener(reader -> {
             try {
                 if (noRegister) {
+                    Log.v(TAG, "setImageListener: noRegister=true, 丢弃此帧");
+                    reader.acquireLatestImage();
                     return;
                 }
                 captureLock.lock();
@@ -278,12 +297,17 @@ public class GlobalScreenCapture {
 
     @Nullable
     public synchronized Image capture() {
+        Thread currentThread = ThreadCompat.currentThread();
+        Log.d(TAG, "capture: 线程=" + currentThread.getName() + " hasPermission=" + hasPermission + " noRegister=" + noRegister
+                + " foregroundServiceStarted=" + foregroundServiceStarted + " mVirtualDisplay=" + (mVirtualDisplay != null)
+                + " mMediaProjection=" + (mMediaProjection != null) + " mImageReader=" + (mImageReader != null));
         Exception e = mException;
         if (e != null) {
             mException = null;
+            Log.e(TAG, "capture: 发现待处理异常", e);
             throw new ScriptException(e);
         }
-        Thread thread = ThreadCompat.currentThread();
+        Thread thread = currentThread;
         long startTime = System.currentTimeMillis();
         int retryLimit = 5;
         while (!thread.isInterrupted()) {
@@ -367,23 +391,29 @@ public class GlobalScreenCapture {
     }
 
     private void release() {
+        Log.w(TAG, "release: 开始释放截图资源 hasPermission=" + hasPermission + " noRegister=" + noRegister
+                + " foregroundServiceStarted=" + foregroundServiceStarted);
         noRegister = true;
         hasPermission = false;
         mOrientation = -1;
         foregroundServiceStarted = false;
         if (mImageAcquireLooper != null) {
+            Log.d(TAG, "release: 退出 mImageAcquireLooper");
             mImageAcquireLooper.quit();
             mImageAcquireLooper = null;
         }
         if (mMediaProjection != null) {
+            Log.d(TAG, "release: 停止 MediaProjection");
             mMediaProjection.stop();
             mMediaProjection = null;
         }
         if (mVirtualDisplay != null) {
+            Log.d(TAG, "release: 释放 VirtualDisplay");
             mVirtualDisplay.release();
             mVirtualDisplay = null;
         }
         if (mImageReader != null) {
+            Log.d(TAG, "release: 关闭 ImageReader");
             mImageReader.setOnImageAvailableListener(null, null);
             mImageReader.close();
             mImageReader = null;
