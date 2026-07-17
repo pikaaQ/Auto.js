@@ -74,6 +74,7 @@ import io.reactivex.schedulers.Schedulers;
 @EFragment(R.layout.fragment_drawer)
 public class DrawerFragment extends androidx.fragment.app.Fragment {
 
+    private static final String TAG = "DrawerFragment";
     private static final String URL_DEV_PLUGIN = "https://www.autojs.org/topic/968/";
 
     @ViewById(R.id.header)
