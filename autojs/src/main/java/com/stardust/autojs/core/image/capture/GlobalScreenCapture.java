@@ -122,27 +122,21 @@ public class GlobalScreenCapture {
 
     private void ensureForegroundService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !foregroundServiceStarted) {
-            Log.d(TAG, "ensureForegroundService: 尝试启动前台服务 foregroundServiceStarted=" + foregroundServiceStarted);
             mContext.startForegroundService(new Intent(mContext, CaptureForegroundService.class));
-            Log.d(TAG, "ensureForegroundService: startForegroundService 已调用，等待 notifyStarted 通知");
             try {
                 this.wait(5000);
-                Log.d(TAG, "ensureForegroundService: 已收到通知/wait返回，foregroundServiceStarted=" + foregroundServiceStarted);
             } catch (InterruptedException e) {
                 Log.e(TAG, "ensureForegroundService: wait 被中断", e);
                 throw new ScriptInterruptedException();
             }
             if (!foregroundServiceStarted) {
-                Log.e(TAG, "ensureForegroundService: 前台服务启动超时(5s)或失败，foregroundServiceStarted仍为false");
+                Log.e(TAG, "ensureForegroundService: 前台服务启动超时(5s)或失败");
             }
-        } else {
-            Log.d(TAG, "ensureForegroundService: 条件不满足，跳过 (Q=" + (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) + " fgStarted=" + foregroundServiceStarted + ")");
         }
     }
 
     public synchronized void notifyStarted() {
         this.foregroundServiceStarted = true;
-        Log.d(TAG, "notifyStarted: foregroundServiceStarted 已设为 true，通知等待线程");
         this.notify();
     }
 
@@ -152,20 +146,18 @@ public class GlobalScreenCapture {
     }
 
     public synchronized boolean hasPermission() {
-        boolean result;
         if (!hasPermission) {
-            Log.e(TAG, "hasPermission: hasPermission标志为false");
-            result = false;
+            Log.e(TAG, "hasPermission: 标志为false");
+            return false;
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !foregroundServiceStarted) {
-            Log.e(TAG, "hasPermission: 前台服务已丢失，尝试重新启动 foregroundServiceStarted=" + foregroundServiceStarted);
+            Log.e(TAG, "hasPermission: 前台服务已丢失，尝试重新启动");
             ensureForegroundService();
-            result = foregroundServiceStarted;
-            Log.d(TAG, "hasPermission: 重启前台服务后 foregroundServiceStarted=" + result);
-        } else {
-            result = true;
+            if (!foregroundServiceStarted) {
+                Log.e(TAG, "hasPermission: 重新启动前台服务失败");
+            }
+            return foregroundServiceStarted;
         }
-        Log.d(TAG, "hasPermission: 返回 " + result + " (hasPermission=" + hasPermission + " fgStarted=" + foregroundServiceStarted + ")");
-        return result;
+        return true;
     }
 
     public void setOrientation(int orientation) {
@@ -226,36 +218,32 @@ public class GlobalScreenCapture {
                 Log.e(TAG, "grantMediaProjection: getMediaProjection returned null");
                 return;
             }
-            Log.d(TAG, "grantMediaProjection: 成功获取新projection");
             if (mMediaProjection != null) {
                 mMediaProjection.stop();
             }
             mMediaProjection = newMediaProjection;
         } catch (Exception e) {
-            Log.e(TAG, "grantMediaProjection: 获取新projection失败 可能只是MIUI的bug " + e);
+            Log.e(TAG, "grantMediaProjection: 获取新projection失败 " + e);
             release();
         }
     }
 
     @SuppressLint("WrongConstant")
     private void initVirtualDisplay(int width, int height, int screenDensity) {
-        Log.d(TAG, "initVirtualDisplay: mMediaProjection is " + (mMediaProjection != null ? "valid" : "null") + " w=" + width + " h=" + height + " d=" + screenDensity);
+        Log.d(TAG, "initVirtualDisplay: w=" + width + " h=" + height + " d=" + screenDensity + " projection=" + (mMediaProjection != null ? "valid" : "null"));
         if (mMediaProjection == null) {
-            Log.d(TAG, "initVirtualDisplay: mMediaProjection == null, 尝试grantMediaProjection");
             grantMediaProjection();
             if (mMediaProjection == null) {
-                Log.d(TAG, "initVirtualDisplay: grantMediaProjection后仍为null，抛出异常");
                 throw new IllegalStateException("mediaProjection 初始化失败，无法刷新");
             }
         }
-        Log.d(TAG, "initVirtualDisplay: width:" + width + ",height:" + height + ",density:" + screenDensity);
         mImageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 3);
         try {
             mVirtualDisplay = mMediaProjection.createVirtualDisplay(TAG,
                     width, height, screenDensity, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                     mImageReader.getSurface(), null, null);
         } catch (SecurityException e) {
-            Log.e(TAG, "initVirtualDisplay: createVirtualDisplay SecurityException: " + e);
+            Log.e(TAG, "initVirtualDisplay: SecurityException " + e);
             release();
         }
     }
@@ -270,11 +258,9 @@ public class GlobalScreenCapture {
     }
 
     private void setImageListener(Handler handler) {
-        Log.d(TAG, "注册imageListener: ");
         mImageReader.setOnImageAvailableListener(reader -> {
             try {
                 if (noRegister && !mForceCapture) {
-                    Log.v(TAG, "setImageListener: noRegister=true 且未在capture中，丢弃此帧");
                     reader.acquireLatestImage();
                     return;
                 }
@@ -299,9 +285,8 @@ public class GlobalScreenCapture {
     @Nullable
     public synchronized Image capture() {
         Thread currentThread = ThreadCompat.currentThread();
-        Log.d(TAG, "capture: 线程=" + currentThread.getName() + " hasPermission=" + hasPermission + " noRegister=" + noRegister
-                + " foregroundServiceStarted=" + foregroundServiceStarted + " mVirtualDisplay=" + (mVirtualDisplay != null)
-                + " mMediaProjection=" + (mMediaProjection != null) + " mImageReader=" + (mImageReader != null));
+        Log.d(TAG, "capture: " + currentThread.getName() + " permission=" + hasPermission
+                + " vd=" + (mVirtualDisplay != null) + " mp=" + (mMediaProjection != null));
         Exception e = mException;
         if (e != null) {
             mException = null;
@@ -318,45 +303,35 @@ public class GlobalScreenCapture {
                 Image cachedImage = getCachedImage();
                 if (cachedImage != null) {
                     return cachedImage;
-                } else {
-                    Log.d(TAG, "capture: 加锁等待获取截图");
-                    long waitStart = System.currentTimeMillis();
-                    captureLock.lock();
-                    try {
-                        captureComplete.await(2, TimeUnit.SECONDS);
-                        Log.d(TAG, "capture: 获取到截图信号或超时，等待耗时：" + (System.currentTimeMillis() - waitStart) + "ms");
+                }
+                captureLock.lock();
+                try {
+                    if (captureComplete.await(2, TimeUnit.SECONDS)) {
                         cachedImage = getCachedImage();
                         if (cachedImage != null) {
                             return cachedImage;
                         }
-                        Log.d(TAG, "capture: 获取到截图信号，但是图片已经被其他脚本获取 重新获取");
-                    } catch (InterruptedException ex) {
-                        throw new ScriptInterruptedException();
-                    } finally {
-                        captureLock.unlock();
                     }
+                } catch (InterruptedException ex) {
+                    throw new ScriptInterruptedException();
+                } finally {
+                    captureLock.unlock();
                 }
                 if (System.currentTimeMillis() - startTime > 1000) {
                     startTime = System.currentTimeMillis();
-                    Log.d(TAG, "capture: 获取截图失败，刷新virtualDisplay, mVirtualDisplay=" + (mVirtualDisplay != null) + " mMediaProjection=" + (mMediaProjection != null));
                     if (mVirtualDisplay != null) {
-                        // VirtualDisplay仍有效，直接重新创建（不获取新MediaProjection，避免Android 16上non-current错误）
-                        Log.d(TAG, "capture: mVirtualDisplay有效，直接刷新VirtualDisplay");
                         this.refreshVirtualDisplay(getOrientation());
                     } else if (mMediaProjection != null) {
-                        Log.d(TAG, "capture: mMediaProjection有效，跳过grantMediaProjection，仅重建VirtualDisplay");
                         this.refreshVirtualDisplay(getOrientation());
                     } else {
-                        Log.d(TAG, "capture: 全部失效，走grantMediaProjection + refresh");
                         this.grantMediaProjection();
                         this.refreshVirtualDisplay(getOrientation());
                     }
                     if (retryLimit-- <= 0) {
-                        Log.d(TAG, "capture: 获取截图异常，重试多次失败 退出");
+                        Log.w(TAG, "capture: 重试多次失败，退出");
                         break;
                     }
                 }
-
             }
             throw new ScriptInterruptedException();
         } finally {
@@ -402,29 +377,24 @@ public class GlobalScreenCapture {
     }
 
     private void release() {
-        Log.w(TAG, "release: 开始释放截图资源 hasPermission=" + hasPermission + " noRegister=" + noRegister
-                + " foregroundServiceStarted=" + foregroundServiceStarted);
+        Log.w(TAG, "release: 开始释放截图资源 hasPermission=" + hasPermission + " foregroundServiceStarted=" + foregroundServiceStarted);
         noRegister = true;
         hasPermission = false;
         mOrientation = -1;
         foregroundServiceStarted = false;
         if (mImageAcquireLooper != null) {
-            Log.d(TAG, "release: 退出 mImageAcquireLooper");
             mImageAcquireLooper.quit();
             mImageAcquireLooper = null;
         }
         if (mMediaProjection != null) {
-            Log.d(TAG, "release: 停止 MediaProjection");
             mMediaProjection.stop();
             mMediaProjection = null;
         }
         if (mVirtualDisplay != null) {
-            Log.d(TAG, "release: 释放 VirtualDisplay");
             mVirtualDisplay.release();
             mVirtualDisplay = null;
         }
         if (mImageReader != null) {
-            Log.d(TAG, "release: 关闭 ImageReader");
             mImageReader.setOnImageAvailableListener(null, null);
             mImageReader.close();
             mImageReader = null;

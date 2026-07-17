@@ -255,13 +255,11 @@ public class DevPluginResponseHandler implements Handler {
     }
 
     private void doCaptureAndSend(String id) {
-        Log.d(TAG, "doCaptureAndSend: id=" + id + " 开始截图流程，线程=" + Thread.currentThread().getName());
         String tempPath = mCacheDir.getAbsolutePath() + "/screenshot_" + id + ".png";
         File tempFile = new File(tempPath);
         boolean sent = false;
         try {
             Image image = GlobalScreenCapture.getInstance().capture();
-            Log.d(TAG, "doCaptureAndSend: capture返回 " + (image != null ? "有效图片" : "null"));
             if (image != null) {
                 Bitmap bitmap = ImageWrapper.toBitmap(image);
                 tempFile.getParentFile().mkdirs();
@@ -270,7 +268,6 @@ public class DevPluginResponseHandler implements Handler {
                 fos.close();
                 bitmap.recycle();
                 image.close();
-                Log.d(TAG, "doCaptureAndSend: 图片已保存到 " + tempPath + "，开始发送");
                 sendScreenshotFile(id, tempPath);
                 sent = true;
             } else {
@@ -279,7 +276,7 @@ public class DevPluginResponseHandler implements Handler {
                         json("error", "capture returned null"));
             }
         } catch (ScriptInterruptedException e) {
-            Log.e(TAG, "doCaptureAndSend: ScriptInterruptedException 截图超时，可能30秒都未收到帧", e);
+            Log.e(TAG, "doCaptureAndSend: ScriptInterruptedException 截图超时", e);
             DevPluginService.getInstance().sendCommandResult(id, false,
                     json("error", "screenshot timed out: no frame received in 30s"));
         } catch (Exception e) {
@@ -290,7 +287,6 @@ public class DevPluginResponseHandler implements Handler {
             if (!sent && tempFile.exists()) {
                 tempFile.delete();
             }
-            Log.d(TAG, "doCaptureAndSend: id=" + id + " 完成，sent=" + sent);
         }
     }
 
