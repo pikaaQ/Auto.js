@@ -1,6 +1,6 @@
 ---
 name: autoxjs-connector
-description: "AutoX.js 手机自动化开发助手。自动检测当前项目是否为 AutoX.js 项目，当任务需要探索手机端或调试时，自动启动 WebSocket 服务端并引导用户连接手机。Triggers: 当项目为 AutoX.js 且当前任务涉及截图、UI分析、脚本调试、手机文件操作等需要手机端的场景时自动激活。"
+description: "AutoX.js 手机自动化开发助手。自动检测当前项目是否为基于 AutoX.js 构建的手机自动化项目，当任务需要探索手机端或调试时，自动启动 WebSocket 服务端并引导用户连接手机。Triggers: 当项目是基于 AutoX.js 构建的手机自动化项目且当前任务涉及截图、UI分析、脚本调试、手机文件操作等需要手机端的场景时自动激活。"
 ---
 
 # AutoX.js 手机连接器
@@ -44,7 +44,7 @@ skill(name="autoxjs-connector")
 ## 激活条件
 
 当 **同时满足** 以下条件时，自动按流程执行：
-1. 当前项目是 AutoX.js / Auto.js 项目（存在 `app/src/main/java/org/autojs/` 等特征）
+1. 当前项目是基于 AutoX.js 构建的手机自动化项目
 2. 当前任务需要手机端参与，如：截图、UI 组件树分析、脚本调试、推送脚本到手机、拉取手机文件
 
 不需要用户显式说出触发词。AI 根据上下文自行判断是否需要连接手机。
