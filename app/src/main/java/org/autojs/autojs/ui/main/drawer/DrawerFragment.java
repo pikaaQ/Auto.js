@@ -147,6 +147,35 @@ public class DrawerFragment extends androidx.fragment.app.Fragment {
             ForegroundService.start(GlobalAppContext.get());
             setChecked(mForegroundServiceItem, true);
         }
+        // 启动后延后检查截图权限，确保 UI 已就绪
+        new Handler(Looper.getMainLooper()).postDelayed(this::checkScreenCaptureOnStartup, 300);
+    }
+
+    private void checkScreenCaptureOnStartup() {
+        boolean prefOn = PreferenceManager.getDefaultSharedPreferences(requireContext())
+                .getBoolean(getString(R.string.key_screen_capture), false);
+        if (!prefOn) return;
+        if (GlobalScreenCapture.getInstance().hasPermission()) return;
+        Log.d(TAG, "启动时检测到截图开关为ON但无权限，请求授权");
+        ScreenCaptureRequester.Callback callback = (result, data) -> {
+            if (result == Activity.RESULT_OK && data != null) {
+                new Thread(() -> {
+                    try {
+                        GlobalScreenCapture.getInstance().initCapture(
+                                getContext(), data, Configuration.ORIENTATION_UNDEFINED);
+                    } catch (Exception ignored) {
+                    }
+                }).start();
+            } else {
+                Log.w(TAG, "启动时授权失败，将截图开关设为OFF");
+                setChecked(mScreenCaptureItem, false);
+                PreferenceManager.getDefaultSharedPreferences(requireContext())
+                        .edit()
+                        .putBoolean(getString(R.string.key_screen_capture), false)
+                        .apply();
+            }
+        };
+        ScreenCaptureRequestActivity.request(requireContext(), callback);
     }
 
     private void initMenuItems() {
