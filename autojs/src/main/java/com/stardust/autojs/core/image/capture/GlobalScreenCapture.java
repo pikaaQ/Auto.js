@@ -99,6 +99,7 @@ public class GlobalScreenCapture {
         ensureForegroundService();
         mProjectionManager = (MediaProjectionManager) context.getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         mMediaProjection = mProjectionManager.getMediaProjection(Activity.RESULT_OK, (Intent) data.clone());
+        Log.d(TAG, "initCapture: getMediaProjection returned " + (mMediaProjection != null ? "valid" : "null (will fail!)"));
         new Thread(() -> {
             mHandler = new Handler(Looper.getMainLooper());
             synchronized (GlobalScreenCapture.this) {
@@ -114,7 +115,8 @@ public class GlobalScreenCapture {
         }
         observeOrientation();
         setOrientation(orientation);
-        hasPermission = true;
+        hasPermission = mMediaProjection != null;
+        Log.d(TAG, "initCapture: hasPermission set to " + hasPermission + " (mMediaProjection=" + (mMediaProjection != null ? "valid" : "null") + ")");
     }
 
     private void ensureForegroundService() {
@@ -218,9 +220,12 @@ public class GlobalScreenCapture {
 
     @SuppressLint("WrongConstant")
     private void initVirtualDisplay(int width, int height, int screenDensity) {
+        Log.d(TAG, "initVirtualDisplay: mMediaProjection is " + (mMediaProjection != null ? "valid" : "null") + " w=" + width + " h=" + height + " d=" + screenDensity);
         if (mMediaProjection == null) {
+            Log.d(TAG, "initVirtualDisplay: mMediaProjection == null, 尝试grantMediaProjection");
             grantMediaProjection();
             if (mMediaProjection == null) {
+                Log.d(TAG, "initVirtualDisplay: grantMediaProjection后仍为null，抛出异常");
                 throw new IllegalStateException("mediaProjection 初始化失败，无法刷新");
             }
         }
@@ -304,10 +309,12 @@ public class GlobalScreenCapture {
             }
             if (System.currentTimeMillis() - startTime > 1000) {
                 startTime = System.currentTimeMillis();
-                Log.d(TAG, "capture: 获取截图失败，刷新virtualDisplay");
+                Log.d(TAG, "capture: 获取截图失败，刷新virtualDisplay, mVirtualDisplay=" + (mVirtualDisplay != null) + " mMediaProjection=" + (mMediaProjection != null));
                 if (mVirtualDisplay == null && mMediaProjection != null) {
+                    Log.d(TAG, "capture: mMediaProjection有效，跳过grantMediaProjection直接创建VirtualDisplay");
                     this.refreshVirtualDisplay(getOrientation());
                 } else {
+                    Log.d(TAG, "capture: 走原路径 grantMediaProjection + refresh, mMediaProjection is " + (mMediaProjection != null ? "valid" : "null"));
                     this.grantMediaProjection();
                     this.refreshVirtualDisplay(getOrientation());
                 }
