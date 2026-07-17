@@ -66,6 +66,7 @@ public class GlobalScreenCapture {
 
     private boolean hasPermission;
     private boolean noRegister;
+    private volatile boolean mForceCapture = false;
 
     private ReentrantLock captureLock = new ReentrantLock();
 
@@ -272,8 +273,8 @@ public class GlobalScreenCapture {
         Log.d(TAG, "注册imageListener: ");
         mImageReader.setOnImageAvailableListener(reader -> {
             try {
-                if (noRegister) {
-                    Log.v(TAG, "setImageListener: noRegister=true, 丢弃此帧");
+                if (noRegister && !mForceCapture) {
+                    Log.v(TAG, "setImageListener: noRegister=true 且未在capture中，丢弃此帧");
                     reader.acquireLatestImage();
                     return;
                 }
@@ -307,50 +308,60 @@ public class GlobalScreenCapture {
             Log.e(TAG, "capture: 发现待处理异常", e);
             throw new ScriptException(e);
         }
-        Thread thread = currentThread;
-        long startTime = System.currentTimeMillis();
-        int retryLimit = 5;
-        while (!thread.isInterrupted()) {
-            Image cachedImage = getCachedImage();
-            if (cachedImage != null) {
-                return cachedImage;
-            } else {
-                Log.d(TAG, "capture: 加锁等待获取截图");
-                long waitStart = System.currentTimeMillis();
-                captureLock.lock();
-                try {
-                    captureComplete.await(2, TimeUnit.SECONDS);
-                    Log.d(TAG, "capture: 获取到截图信号或超时，等待耗时：" + (System.currentTimeMillis() - waitStart) + "ms");
-                    cachedImage = getCachedImage();
-                    if (cachedImage != null) {
-                        return cachedImage;
-                    }
-                    Log.d(TAG, "capture: 获取到截图信号，但是图片已经被其他脚本获取 重新获取");
-                } catch (InterruptedException ex) {
-                    throw new ScriptInterruptedException();
-                } finally {
-                    captureLock.unlock();
-                }
-            }
-            if (System.currentTimeMillis() - startTime > 1000) {
-                startTime = System.currentTimeMillis();
-                Log.d(TAG, "capture: 获取截图失败，刷新virtualDisplay, mVirtualDisplay=" + (mVirtualDisplay != null) + " mMediaProjection=" + (mMediaProjection != null));
-                if (mVirtualDisplay == null && mMediaProjection != null) {
-                    Log.d(TAG, "capture: mMediaProjection有效，跳过grantMediaProjection直接创建VirtualDisplay");
-                    this.refreshVirtualDisplay(getOrientation());
+        // 允许capture期间接收帧，即使noRegister=true
+        mForceCapture = true;
+        try {
+            Thread thread = currentThread;
+            long startTime = System.currentTimeMillis();
+            int retryLimit = 5;
+            while (!thread.isInterrupted()) {
+                Image cachedImage = getCachedImage();
+                if (cachedImage != null) {
+                    return cachedImage;
                 } else {
-                    Log.d(TAG, "capture: 走原路径 grantMediaProjection + refresh, mMediaProjection is " + (mMediaProjection != null ? "valid" : "null"));
-                    this.grantMediaProjection();
-                    this.refreshVirtualDisplay(getOrientation());
+                    Log.d(TAG, "capture: 加锁等待获取截图");
+                    long waitStart = System.currentTimeMillis();
+                    captureLock.lock();
+                    try {
+                        captureComplete.await(2, TimeUnit.SECONDS);
+                        Log.d(TAG, "capture: 获取到截图信号或超时，等待耗时：" + (System.currentTimeMillis() - waitStart) + "ms");
+                        cachedImage = getCachedImage();
+                        if (cachedImage != null) {
+                            return cachedImage;
+                        }
+                        Log.d(TAG, "capture: 获取到截图信号，但是图片已经被其他脚本获取 重新获取");
+                    } catch (InterruptedException ex) {
+                        throw new ScriptInterruptedException();
+                    } finally {
+                        captureLock.unlock();
+                    }
                 }
-                if (retryLimit-- <= 0) {
-                    Log.d(TAG, "capture: 获取截图异常，重试多次失败 退出");
-                    break;
+                if (System.currentTimeMillis() - startTime > 1000) {
+                    startTime = System.currentTimeMillis();
+                    Log.d(TAG, "capture: 获取截图失败，刷新virtualDisplay, mVirtualDisplay=" + (mVirtualDisplay != null) + " mMediaProjection=" + (mMediaProjection != null));
+                    if (mVirtualDisplay != null) {
+                        // VirtualDisplay仍有效，直接重新创建（不获取新MediaProjection，避免Android 16上non-current错误）
+                        Log.d(TAG, "capture: mVirtualDisplay有效，直接刷新VirtualDisplay");
+                        this.refreshVirtualDisplay(getOrientation());
+                    } else if (mMediaProjection != null) {
+                        Log.d(TAG, "capture: mMediaProjection有效，跳过grantMediaProjection，仅重建VirtualDisplay");
+                        this.refreshVirtualDisplay(getOrientation());
+                    } else {
+                        Log.d(TAG, "capture: 全部失效，走grantMediaProjection + refresh");
+                        this.grantMediaProjection();
+                        this.refreshVirtualDisplay(getOrientation());
+                    }
+                    if (retryLimit-- <= 0) {
+                        Log.d(TAG, "capture: 获取截图异常，重试多次失败 退出");
+                        break;
+                    }
                 }
-            }
 
+            }
+            throw new ScriptInterruptedException();
+        } finally {
+            mForceCapture = false;
         }
-        throw new ScriptInterruptedException();
     }
 
     private Image getCachedImage() {
