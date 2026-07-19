@@ -1,6 +1,6 @@
 ---
 name: autoxjs-connector
-description: "AutoX.js 手机自动化开发助手。自动检测当前项目是否为基于 AutoX.js 构建的手机自动化项目，当任务需要探索手机端或调试时，自动启动 WebSocket 服务端并引导用户连接手机。Triggers: 当项目是基于 AutoX.js 构建的手机自动化项目且当前任务涉及截图、UI分析、脚本调试、手机文件操作等需要手机端的场景时自动激活。"
+description: "AutoX.js 手机自动化开发助手。自动检测当前项目是否为基于 AutoX.js 构建的手机自动化项目，当任务需要探索手机端或调试时，先检查 WebSocket 服务端状态；若已运行则复用，仅在服务端异常或相关代码被修改时才重启。断开连接时引导用户重新连接手机。Triggers: 当项目是基于 AutoX.js 构建的手机自动化项目且当前任务涉及截图、UI分析、脚本调试、手机文件操作等需要手机端的场景时自动激活。"
 ---
 
 # AutoX.js 手机连接器
@@ -69,9 +69,16 @@ question:
 
 **当激活条件满足时，必须按以下步骤执行。**
 
-### Step 1: 启动 Server
+### Step 1: 检查并启动 Server
 
-使用 `nohup` 在后台启动 WebSocket 服务端：
+先检查服务端是否已在运行：
+```bash
+python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"status"}' --port 9317
+```
+
+- **返回了有效状态**（包含 `"ws":` 等字段）→ 服务端已在运行且状态正常，**不要重启**，直接跳到 Step 3（引导用户连接）
+- **命令失败或返回异常** → 说明服务端未运行或状态异常；或本次任务修改了 `server.py` / 协议 / 连接相关代码 → 此时才执行下面的启动命令：
+
 ```bash
 nohup python3 ai/skills/autoxjs-connector/server.py --port 9317 --host 0.0.0.0 > /tmp/autoxjs-server.log 2>&1 &
 ```
@@ -118,7 +125,7 @@ python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"status"}' --port 9
 
 解析返回 JSON：
 - **`"connected": true`** → 连接成功，输出设备信息并进入操作阶段
-- **`"connected": false`** → 用 `question` 工具让用户选择：
+- **`"connected": false`** → 服务端已在运行但手机未连接，**不要重启 server**，用 `question` 工具让用户选择：
   ```
   header: "📱 连接失败"
   question: "手机未连接。请确认：\n1. 手机和 PC 在同一网络\n2. 输入了正确的 IP: {IP}:9317\n3. 已点击「连接电脑」按钮"
@@ -169,15 +176,17 @@ python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file","path":
 ## 连接断开处理
 
 如果操作过程中连接断开（命令返回 `"手机未连接"`）：
-1. 用 `question` 工具引导用户重新连接
-2. 验证连接成功后再继续
-3. 如果用户选择取消，终止任务
+1. **不要重启 server** — 服务端本身运行正常，只是手机端断开
+2. 用 `question` 工具引导用户重新连接手机
+3. 验证连接成功后再继续
+4. 如果用户选择取消，终止任务
 
 ## 终止
 
 任务完成或用户终止时：
-1. 发 shutdown 命令：`` python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"shutdown"}' --port 9317 ``
-2. 告知用户已断开
+1. 如果服务端是由本次任务启动的 → 发 shutdown 命令：`` python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"shutdown"}' --port 9317 ``
+2. 如果服务端在任务开始前就已运行 → **不要 shutdown**，只需告知用户已断开
+3. 告知用户已断开
 
 ## 协议参考
 
