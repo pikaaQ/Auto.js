@@ -88,7 +88,11 @@ class ScriptCanvasView(context: Context, scriptRuntime: ScriptRuntime) : Texture
             Log.e(LOG_TAG, "drawOnce error", e)
         } finally {
             if (canvas != null) {
-                unlockCanvasAndPost(canvas)
+                try {
+                    unlockCanvasAndPost(canvas)
+                } catch (e: Exception) {
+                    Log.e(LOG_TAG, "unlockCanvasAndPost error", e)
+                }
             }
             lock.unlock()
         }
@@ -97,14 +101,25 @@ class ScriptCanvasView(context: Context, scriptRuntime: ScriptRuntime) : Texture
     @Synchronized
     private fun performDraw() {
         ::mDrawingThreadPool.ifNull {
-            Executors.newCachedThreadPool()
+            Executors.newSingleThreadExecutor { r ->
+                Thread(r, "ScriptCanvasDraw").also {
+                    it.setUncaughtExceptionHandler { _, e ->
+                        Log.e(LOG_TAG, "draw thread uncaught: $e")
+                        state.set(CanvasState.END)
+                    }
+                }
+            }
         }.run {
             execute {
                 try {
                     val scriptCanvas = ScriptCanvas()
                     while (true) {
                         if (mScriptRuntime.get()?.isStopped == true) {
-                            Log.d(LOG_TAG, "performDraw: script runtime stopped ${mScriptRuntime.get()?.isStopped}")
+                            Log.d(LOG_TAG, "performDraw: script runtime stopped")
+                            break
+                        }
+                        if (state.get() == CanvasState.END || state.get() == CanvasState.EXITING) {
+                            Log.d(LOG_TAG, "performDraw: canvas lifecycle end")
                             break
                         }
                         try {
@@ -119,12 +134,12 @@ class ScriptCanvasView(context: Context, scriptRuntime: ScriptRuntime) : Texture
                         }
                         drawOnce(scriptCanvas)
                         if (state.get() == CanvasState.END) {
-                            Log.d(LOG_TAG, "canvas lifecycle end")
                             break
                         }
                     }
-                } catch (e: Exception) {
-                    Log.e(LOG_TAG, "performDraw: error $e")
+                } catch (e: Throwable) {
+                    Log.e(LOG_TAG, "performDraw: fatal error", e)
+                } finally {
                     state.set(CanvasState.END)
                 }
             }
