@@ -175,6 +175,84 @@ python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"run","script":"...
 python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file","path":"/sdcard/screenshot.png"}' --port 9317
 ```
 
+### 拉取日志
+```bash
+python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file","path":"/sdcard/脚本/.logs/autojs-log4j.txt"}' --port 9317
+```
+
+## 常用命令模板（经过实战验证）
+
+以下是在本项目中验证过的可靠操作方式。推荐使用 TCP 直连方式（绕过 `--send`，对大脚本更稳定）。
+
+### 推送并保存脚本到手机
+```python
+import json, socket, time
+script = open('本地脚本.js', encoding='utf-8').read()
+payload = json.dumps({"cmd": "command", "command": "save",
+    "params": {"name": "手机端名称.js", "script": script}, "wait": False})
+s = socket.socket(); s.settimeout(15)
+s.connect(("127.0.0.1", 19317))
+s.sendall((payload + "\n").encode())
+time.sleep(1.5)
+resp = s.recv(65535)
+print(resp.decode()); s.close()
+```
+
+### 推送、保存并自动执行（一步到位）
+```python
+import json, socket, time
+script = open('本地脚本.js', encoding='utf-8').read()
+payload = json.dumps({"cmd": "command", "command": "run",
+    "params": {"name": "手机端名称.js", "script": script}, "wait": True})
+s = socket.socket(); s.settimeout(60)  # 超时设长，等待脚本执行完毕
+s.connect(("127.0.0.1", 19317))
+s.sendall((payload + "\n").encode())
+time.sleep(3)  # 给执行留缓冲
+resp = s.recv(65535)
+print(resp.decode()); s.close()
+# 此时日志已写入手机，可立即 pull_file
+```
+
+### 远程启动已保存的脚本
+```python
+import json, socket, time
+payload = json.dumps({"cmd": "command", "command": "run",
+    "params": {"name": "手机端名称.js"}, "wait": True})
+s = socket.socket(); s.settimeout(60)
+s.connect(("127.0.0.1", 19317))
+s.sendall((payload + "\n").encode())
+time.sleep(3)
+resp = s.recv(65535); print(resp.decode()); s.close()
+```
+
+### 拉取手机文件（使用 TCP 直连）
+```python
+import json, socket, time
+payload = json.dumps({"cmd": "pull_file", "path": "/sdcard/脚本/.logs/autojs-log4j.txt"})
+s = socket.socket(); s.settimeout(15)
+s.connect(("127.0.0.1", 19317))
+s.sendall((payload + "\n").encode())
+time.sleep(2)
+resp = s.recv(65535)
+# 响应中 local_path 指向本地保存的文件
+print(json.loads(resp.decode()).get("result", {}).get("local_path", ""));
+s.close()
+```
+
+### 获取 UI 组件树（dump）
+```python
+import json, socket, time
+payload = json.dumps({"cmd": "dump"})
+s = socket.socket(); s.settimeout(15)
+s.connect(("127.0.0.1", 19317))
+s.sendall((payload + "\n").encode())
+time.sleep(3)
+resp = s.recv(65535)
+# 写入文件分析
+with open('/tmp/ui_dump.json', 'w') as f: f.write(resp.decode())
+s.close()
+```
+
 ## 连接断开处理
 
 如果操作过程中连接断开（命令返回 `"手机未连接"`）：
