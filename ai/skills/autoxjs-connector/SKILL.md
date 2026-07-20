@@ -180,6 +180,51 @@ python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file","path":
 python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file","path":"/sdcard/脚本/.logs/autojs-log4j.txt"}' --port 9317
 ```
 
+## 脚本开发工作流（测试循环）
+
+调试脚本时严格按以下循环执行：
+
+### Step 1: 推送并保存脚本
+用 `save` 命令将本地脚本推送到手机保存。推荐使用 TCP 直连模板（见「推送并保存脚本到手机」）。
+
+### Step 2: 远程启动运行
+用 `run` 命令远程启动已保存的脚本（只传 `name` 不含 `script`），`wait: true` 等待执行完成。见「远程启动已保存的脚本」模板。
+
+**为什么用 save + run 两步，而不是一步到位？**
+- `save` 用小超时（15s）快速推送，即使大脚本也不超时
+- `run` 单独远程启动，`wait` 超时设 60s+，避免推送和运行互相影响
+- 两步独立，更容易定位问题（推送失败 or 运行失败）
+
+### Step 3: 在脚本中打关键日志
+在脚本的关键节点添加 `console.log()`，例如：
+```javascript
+console.log("找到按钮：" + widget.desc());
+console.log("开始看广告...");
+console.log("进入第 X 轮循环");
+console.log("弹窗处理完成");
+```
+这些日志会写入 `/sdcard/脚本/.logs/autojs-log4j.txt`。
+
+### Step 4: 拉取日志查看结果
+运行结束后，拉取日志文件查看各阶段输出。见「拉取日志」模板。
+
+### Step 5: 清理（重要）
+- **脚本不符合用户需求或只是临时测试** → 完成后**必须**删除手机上保存的脚本文件，避免污染 App 的脚本列表
+- 删除方式：使用 `exec` 执行 `shell("rm /sdcard/脚本/手机端名称.js", true)`（文件管理器路径以实际为准）
+- **脚本被用户采纳、需要保留** → 不删除，通知用户脚本已保存到手机
+
+### 快速清理命令
+```python
+import json, socket
+# 删除手机上保存的脚本
+payload = json.dumps({"cmd": "exec", "script":
+    'files.remove("/sdcard/脚本/手机端名称.js")', "wait": True})
+s = socket.socket(); s.settimeout(10)
+s.connect(("127.0.0.1", 19317))
+s.sendall((payload + "\n").encode())
+resp = s.recv(65535); print(resp.decode()); s.close()
+```
+
 ## 常用命令模板（经过实战验证）
 
 以下是在本项目中验证过的可靠操作方式。推荐使用 TCP 直连方式（绕过 `--send`，对大脚本更稳定）。
