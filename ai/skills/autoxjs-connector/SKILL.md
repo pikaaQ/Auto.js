@@ -178,7 +178,9 @@ python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"dump"}' --port 931
 python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"exec","script":"console.log(\"hello\")"}' --port 9317
 ```
 
-### 推送脚本（fire-and-forget）
+### 直接执行脚本（run，不保存到 App）
+`run` 是**直接执行**命令，不会将脚本保存到 App 的脚本列表中。推送到 App 保存请使用 `save`（见下方「脚本开发工作流」Step 1 的 TCP 直连模板）。
+
 标准 VSCode 协议命令，手机不回 `command_result`，必须用 `"wait":false`：
 ```bash
 python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"run","script":"...","name":"test.js","wait":false}' --port 9317
@@ -260,6 +262,8 @@ print(resp.decode()); s.close()
 ```
 
 ### 推送、保存并自动执行（一步到位）
+> ⚠️ `run` 是直接执行命令，**不具备保存到 App 脚本列表的功能**。如需保留脚本到 App 中供后续手动打开，请先使用 `save`（见上一个模板），再单独 `run`。一步到位适合快速调试、用完即弃的场景。
+
 ```python
 import json, socket, time
 script = open('本地脚本.js', encoding='utf-8').read()
@@ -432,7 +436,7 @@ python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"screenshot"}' --po
 |-----|------|------|
 | status | - | 查询连接状态 |
 | command | command, params, wait | 发送原始命令（wait=true 等待结果 / false 即发即走） |
-| run | script, name, wait | 推送执行脚本（默认 wait=false） |
+| run | script, name, wait | 直接执行脚本，**不具备保存功能**（默认 wait=false）；推送到 App 保存请用 `save` |
 | exec | script, wait | 执行 JS 并返回结果（默认 wait=true） |
 | screenshot | - | 截图并保存到本地 |
 | dump | - | 获取 UI 组件树 |
