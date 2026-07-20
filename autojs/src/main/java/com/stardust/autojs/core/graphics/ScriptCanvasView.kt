@@ -68,9 +68,12 @@ class ScriptCanvasView(context: Context, scriptRuntime: ScriptRuntime) : Texture
                 Log.d(LOG_TAG, "canvas state is not drawing ${state.get()}")
                 return
             }
-//            Log.d(LOG_TAG, "canvas draw")
             val time = SystemClock.uptimeMillis()
             canvas = lockCanvas()
+            if (canvas == null) {
+                Log.w(LOG_TAG, "lockCanvas returned null")
+                return
+            }
             scriptCanvas.setCanvas(canvas)
             emit("draw", scriptCanvas, this@ScriptCanvasView)
             if (state.get() != CanvasState.DRAWING) {
@@ -82,8 +85,7 @@ class ScriptCanvasView(context: Context, scriptRuntime: ScriptRuntime) : Texture
                 sleep(dt)
             }
         } catch (e: Exception) {
-            mScriptRuntime.get()?.exit(e)
-            state.set(CanvasState.END)
+            Log.e(LOG_TAG, "drawOnce error", e)
         } finally {
             if (canvas != null) {
                 unlockCanvasAndPost(canvas)
@@ -123,7 +125,6 @@ class ScriptCanvasView(context: Context, scriptRuntime: ScriptRuntime) : Texture
                     }
                 } catch (e: Exception) {
                     Log.e(LOG_TAG, "performDraw: error $e")
-                    mScriptRuntime.get()?.exit(e)
                     state.set(CanvasState.END)
                 }
             }
