@@ -196,6 +196,8 @@ python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file","path":
 
 ## 脚本开发工作流（测试循环）
 
+> 日志文件通常位于手机 `/sdcard/脚本/.logs/` 目录下，主日志文件为 `autojs-log4j.txt`。所有日志拉取统一使用 `pull_file` 命令，见下方 Step 4。
+
 调试脚本时严格按以下循环执行：
 
 ### Step 1: 推送并保存脚本
