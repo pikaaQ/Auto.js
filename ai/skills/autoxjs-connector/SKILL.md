@@ -1,6 +1,6 @@
 ---
 name: autoxjs-connector
-description: "AutoX.js 手机自动化开发助手。自动检测当前项目是否为基于 AutoX.js 构建的手机自动化项目，当任务需要探索手机端或调试时，先检查 WebSocket 服务端状态；若已运行则复用，仅在服务端异常或相关代码被修改时才重启。断开连接时引导用户重新连接手机。Triggers: 当项目是基于 AutoX.js 构建的手机自动化项目且当前任务涉及截图、UI分析、脚本调试、手机文件操作等需要手机端的场景时自动激活。"
+description: "AutoX.js 手机自动化开发助手。自动检测当前项目是否为基于 AutoX.js 构建的手机自动化项目，当任务需要探索手机端或调试时，先检查 WebSocket 服务端状态；server 为常驻后台进程，一旦启动持续运行，除非用户明确要求关闭。即使任务结束、连接断开也不自动关闭 server。Triggers: 当项目是基于 AutoX.js 构建的手机自动化项目且当前任务涉及截图、UI分析、脚本调试、手机文件操作等需要手机端的场景时自动激活。"
 ---
 
 # AutoX.js 手机连接器
@@ -71,6 +71,8 @@ question:
 
 ### Step 1: 检查并启动 Server
 
+server 是常驻后台进程，一旦启动将持续运行，不会随任务结束或连接断开而关闭。
+
 先检查服务端是否已在运行：
 ```bash
 python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"status"}' --port 9317
@@ -87,7 +89,7 @@ nohup python3 ai/skills/autoxjs-connector/server.py --port 9317 --host 0.0.0.0 >
 ```bash
 python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"status"}' --port 9317
 ```
-输出应包含 `"ws": "ws://0.0.0.0:9317"`。若失败则报错并终止。
+输出应包含 `"ws": "ws://0.0.0.0:9317"`。若失败则报错并中止流程（但 **不关闭 server**，若已部分启动则保持运行）。
 
 ### Step 2: 检测本机 IP
 
@@ -181,12 +183,97 @@ python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file","path":
 3. 验证连接成功后再继续
 4. 如果用户选择取消，终止任务
 
+## 诊断工作流（手机端调试）
+
+当需要排查手机端问题时（如组件查找失败、OCR 不识别、流程卡住），按以下闭环执行：
+
+### 工作流
+
+```
+推送诊断脚本并远程执行 → 拉取日志 → 分析日志 → 修复代码 → 推送修复
+```
+
+**AI 应自主完成整个闭环，无需用户介入手机操作。** 用户只需确保手机已连接。
+
+### Step 1: 编写诊断脚本
+
+在 `/tmp/` 下创建诊断脚本，包含：
+- `console.show()` 显示控制台
+- 使用 `log()` 输出探测结果
+- 逐一测试可能的查找方式并打印结果
+- 通过最后一条日志 `=== 完毕 ===` 标记结束
+
+关键注意：
+- **`widget.desc()` 和 `widget.text()` 是方法，不是属性** — 必须加括号调用
+- 组件属性如 `bounds()`、`className()`、`clickable()` 也都是方法
+- 调试父组件树时递归调用 `widget.children()` 遍历
+
+### Step 2: 推送并远程执行
+
+将脚本内容通过 `run` 命令推送到手机并自动执行，`wait=true` 会等待脚本执行完毕：
+
+```bash
+python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"command","command":"run","params":{"name":"diagnose.js","script":"...script content..."},"wait":true}' --port 9317
+```
+
+如果脚本已保存到手机，可只传 name 远程启动：
+```bash
+python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"command","command":"run","params":{"name":"diagnose.js"},"wait":true}' --port 9317
+```
+
+`wait=true` 会阻塞直到脚本运行结束，此时日志已写入手机存储。
+
+> 也可以先用 `save` 推送，再用 `run` 远程执行（两步法）。推荐一步到位用上面第一条命令。
+
+### Step 3: 拉取日志
+
+AutoX.js 日志文件位于手机 `/sdcard/脚本/.logs/autojs-log4j.txt`：
+
+```bash
+python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file","path":"/sdcard/脚本/.logs/autojs-log4j.txt"}' --port 9317
+```
+
+成功拉取后，日志保存在 `phone_data/autojs-log4j.txt`。找到诊断脚本标记头（如 `=== 诊断名称 ===`）到最后之间的内容进行分析。
+
+### Step 4: 分析日志
+
+关键检查点：
+- **组件能否被找到** — `findOne()` 返回 null 还是有效对象
+- **组件的 className** — 确认是 `ViewGroup`、`TextView`、`ImageView` 等
+- **desc/text 属性** — 文本在 desc 还是 text 中
+- **clickable 状态** — 不可点击的组件需要 `.click()` 或坐标点击
+- **bounds 坐标** — 确认位置是否符合预期
+- **父组件树结构** — 通过 `widget.parent().children()` 遍历
+
+### Step 5: 修复并推送
+
+根据诊断结果修改主脚本，再次推送远程执行验证。
+
+## 提示
+
+### exec 命令的局限性
+
+```bash
+python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"exec","script":"1+1"}' --port 9317
+```
+
+`exec` 适用于返回简单值的表达式，但对于涉及 UI 操作、异步等待的复杂脚本，返回值可能为空。复杂调试请使用上面的**诊断工作流**（推送 → 运行 → 拉日志）。
+
+### 常见坑
+
+| 问题 | 原因 | 解决 |
+|------|------|------|
+| `widget.desc` 返回函数引用 | desc 是方法不是属性 | 用 `widget.desc()` |
+| `findOne(2000)` 返回 null | 超时太短或选择器不匹配 | 确认 desc/text 是否存在，增大超时 |
+| 点击无效 | 组件 clickable=false | 直接用 `.click()` 仍可触发坐标点击 |
+| `exec` 返回空 result | 脚本涉及 UI/异步操作 | 改用推送脚本 + 拉日志方式 |
+| 日志找不到 | 路径不对 | 默认在 `/sdcard/脚本/.logs/autojs-log4j.txt` |
+
 ## 终止
 
 任务完成或用户终止时：
-1. 如果服务端是由本次任务启动的 → 发 shutdown 命令：`` python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"shutdown"}' --port 9317 ``
-2. 如果服务端在任务开始前就已运行 → **不要 shutdown**，只需告知用户已断开
-3. 告知用户已断开
+1. **不要 shutdown server** — server 为常驻进程，应持续运行供后续任务复用
+2. 告知用户已断开（server 仍在后台运行，下次任务自动复用）
 
 ## 协议参考
 
@@ -212,4 +299,4 @@ python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"screenshot"}' --po
 | dump | - | 获取 UI 组件树 |
 | pull_file | path | 拉取手机文件 |
 | push_project | project_dir | 推送项目到手机 |
-| shutdown | - | 停止服务端 |
+| shutdown | - | 停止服务端（仅当用户明确要求关闭时使用；不要自动调用） |
