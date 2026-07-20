@@ -93,6 +93,18 @@ public class Images {
             }
         }
 
+        // 尝试从侧边栏已保存的授权数据恢复，避免重新弹窗
+        if (GlobalScreenCapture.getInstance().tryRestore()) {
+            Log.d(TAG, "requestScreenCapture tryRestore 成功，直接注册");
+            GlobalScreenCapture.getInstance().setOrientation(orientation);
+            GlobalScreenCapture.getInstance().register(mScriptRuntime.get());
+            new Thread(() -> {
+                promiseAdapter.awaitResolver();
+                new Handler(Looper.getMainLooper()).postDelayed(() -> promiseAdapter.resolve(true), 50);
+            }).start();
+            return promiseAdapter;
+        }
+
         mScreenCaptureRequester.setOnActivityResultCallback((result, data) -> {
             if (result == Activity.RESULT_OK) {
                 GlobalScreenCapture.getInstance().initCapture(mContext, data, orientation);

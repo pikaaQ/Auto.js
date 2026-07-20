@@ -145,6 +145,25 @@ public class GlobalScreenCapture {
         Log.w(TAG, "foregroundServiceDown: 前台服务已停止");
     }
 
+    /**
+     * 从已保存的授权数据（侧边栏授予）中恢复截图权限，避免重新弹窗
+     */
+    public synchronized boolean tryRestore() {
+        if (hasPermission) return true;
+        if (mData == null || mContext == null) {
+            Log.e(TAG, "tryRestore: 无已保存的授权数据，无法恢复");
+            return false;
+        }
+        Log.d(TAG, "tryRestore: 尝试从已保存的授权数据恢复截图权限");
+        try {
+            initCapture(mContext, mData, mOrientation == -1 ? ORIENTATION_AUTO : mOrientation);
+            return hasPermission;
+        } catch (Exception e) {
+            Log.e(TAG, "tryRestore: 恢复失败", e);
+            return false;
+        }
+    }
+
     public synchronized boolean hasPermission() {
         if (!hasPermission) {
             Log.e(TAG, "hasPermission: 标志为false");
