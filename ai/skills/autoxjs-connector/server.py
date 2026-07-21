@@ -134,6 +134,7 @@ class AutoJSServer:
             self.port,
             ping_interval=10,
             ping_timeout=30,
+            max_size=100_000_000,  # 100MB 允许大文件回传
         )
         # TCP 控制接口
         self._ctrl_server = await asyncio.start_server(
@@ -250,7 +251,7 @@ class AutoJSServer:
 
         fut = self.device.expect_result(cmd_id)
         try:
-            result = await asyncio.wait_for(fut, timeout=60.0)
+            result = await asyncio.wait_for(fut, timeout=300.0)
             return result
         except asyncio.TimeoutError:
             return {"success": False, "error": "命令超时"}
