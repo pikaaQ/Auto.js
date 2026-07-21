@@ -40,7 +40,6 @@ PC → 手机: {"type":"hello", "data":{"version":"1.0.0", "debug":true}}
 | command | `dump` | id | 获取 UI 组件树 (XML) |
 | command | `exec` | id, params: {script} | 执行 JS 并返回结果 |
 | command | `pull_file` | id, params: {path} | 拉取手机文件 |
-| command | `push_file` | id, params: {path} | 推送文件到手机（需二进制帧） |
 | close | — | — | 关闭连接 |
 
 ## 扩展回包 (手机 → PC)
@@ -59,10 +58,17 @@ PC → 手机: {"type":"pong", "data":{}}
 
 ## 二进制传输
 
-### PC → 手机（推送项目/文件）
+### PC → 手机（推送项目）
 
 1. 先发二进制数据帧（App 按 MD5 缓存）
-2. 再发 JSON 元数据（`bytes_command` 类型）
+2. 再发 JSON 元数据（`bytes_command` 类型，**`command` 必须在 `data` 内**）
+
+App 端 `Router` 处理流程：
+```
+RootRouter("type")  → 取顶层 type → 路由到 bytes_command
+  → handleInternal: 传递 data 给子 Router
+  → Router("command")  → 从 data 内取 command 字段 → 路由到具体 handler
+```
 
 支持的 `bytes_command`：
 
@@ -70,16 +76,12 @@ PC → 手机: {"type":"pong", "data":{}}
 |---------|-----------|------|
 | `run_project` | id, name | 推送 ZIP 项目并执行 |
 | `save_project` | id, name | 推送 ZIP 项目到 App 保存（不执行） |
-| `push_file` | path | 推送单个文件（按 path 写入手机） |
 
-`save_project` 示例：
-```json
-{"type":"bytes_command", "message_id":"...", "command":"save_project", "md5":"abc123", "data":{"id":"MyProject", "name":"MyProject"}}
-```
+> ⚠️ `push_file` 在 AutoX.js App 中**未实现**，无法使用。推送单文件请用 `save` 命令（文本脚本）或打包为项目用 `save_project`。
 
-`push_file` 示例：
+`save_project` 示例（**注意 `command` 必须在 `data` 内**）：
 ```json
-{"type":"bytes_command", "message_id":"...", "command":"push_file", "md5":"def456", "data":{"path":"/sdcard/脚本/test.js"}}
+{"type":"bytes_command", "message_id":"...", "md5":"abc123", "data":{"command":"save_project", "id":"MyProject", "name":"MyProject"}}
 ```
 
 ### 手机 → PC（回传截图/文件）

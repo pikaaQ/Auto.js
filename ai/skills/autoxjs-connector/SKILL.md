@@ -330,20 +330,6 @@ time.sleep(3)
 resp = s.recv(65535); print(resp.decode()); s.close()
 ```
 
-### 推送单个文件到手机（push_file）
-通过二进制帧传输，适合推送图片、资源文件等：
-```python
-import json, socket, time
-payload = json.dumps({"cmd": "push_file",
-    "local_path": "/root/auto/Auto.js/screenshot.png",
-    "remote_path": "/sdcard/脚本/screenshot.png"})
-s = socket.socket(); s.settimeout(30)
-s.connect(("127.0.0.1", 19317))
-s.sendall((payload + "\n").encode())
-time.sleep(3)
-resp = s.recv(65535); print(resp.decode()); s.close()
-```
-
 ## 连接断开处理
 
 如果操作过程中连接断开（命令返回 `"手机未连接"`）：
@@ -467,7 +453,6 @@ python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"screenshot"}' --po
 | screenshot | - | 截图并保存到本地 |
 | dump | - | 获取 UI 组件树 |
 | pull_file | path | 拉取手机文件 |
-| push_file | local_path, remote_path | 推送单个文件到手机（二进制帧） |
 | push_project | project_dir | 推送 ZIP 项目到手机并执行 |
 | save_project | project_dir | 推送 ZIP 项目到 App 保存（不执行，脚本出现在 App 列表中） |
 | shutdown | - | 停止服务端（仅当用户明确要求关闭时使用；不要自动调用） |

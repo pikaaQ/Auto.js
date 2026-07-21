@@ -317,14 +317,18 @@ class AutoJSServer:
         zip_data = buf.getvalue()
         md5 = hashlib.md5(zip_data).hexdigest()
 
-        # 协议：先发二进制，再发 JSON
+        # 协议：先发二进制帧，再发 JSON bytes_command
+        # command 必须在 data 内，App Router("command") 从 data 中提取
         await self.device.send_bytes(zip_data)
         await self.device.send_json({
             "type": "bytes_command",
             "message_id": f"{int(time.time()*1000)}_{random.random()}",
-            "command": "run_project",
             "md5": md5,
-            "data": {"id": proj_path.name, "name": proj_path.name},
+            "data": {
+                "command": "run_project",
+                "id": proj_path.name,
+                "name": proj_path.name,
+            },
         })
         return {"success": True, "md5": md5, "size": len(zip_data)}
 
@@ -346,41 +350,18 @@ class AutoJSServer:
         zip_data = buf.getvalue()
         md5 = hashlib.md5(zip_data).hexdigest()
 
-        # 协议：先发二进制，再发 bytes_command（command=save_project）
         await self.device.send_bytes(zip_data)
         await self.device.send_json({
             "type": "bytes_command",
             "message_id": f"{int(time.time()*1000)}_{random.random()}",
-            "command": "save_project",
             "md5": md5,
-            "data": {"id": proj_path.name, "name": proj_path.name},
+            "data": {
+                "command": "save_project",
+                "id": proj_path.name,
+                "name": proj_path.name,
+            },
         })
         return {"success": True, "md5": md5, "size": len(zip_data)}
-
-    async def push_file(self, local_path: str, remote_path: str) -> dict:
-        """推送单个文件到手机（通过二进制帧传输）"""
-        file_path = Path(local_path)
-        if not file_path.is_file():
-            return {"success": False, "error": f"文件不存在: {local_path}"}
-
-        file_data = file_path.read_bytes()
-        md5 = hashlib.md5(file_data).hexdigest()
-
-        # 协议：先发二进制帧，再发 JSON bytes_command
-        await self.device.send_bytes(file_data)
-        await self.device.send_json({
-            "type": "bytes_command",
-            "message_id": f"{int(time.time()*1000)}_{random.random()}",
-            "command": "push_file",
-            "md5": md5,
-            "data": {"path": remote_path},
-        })
-        return {
-            "success": True,
-            "md5": md5,
-            "size": len(file_data),
-            "remote_path": remote_path,
-        }
 
     # ─── TCP 控制接口 ──────────────────────────────
 
@@ -462,12 +443,6 @@ class AutoJSServer:
         elif cmd == "save_project":
             project_dir = req.get("project_dir", "")
             result = await self.save_project(project_dir)
-            return result
-
-        elif cmd == "push_file":
-            local_path = req.get("local_path", "")
-            remote_path = req.get("remote_path", "")
-            result = await self.push_file(local_path, remote_path)
             return result
 
         elif cmd == "shutdown":
