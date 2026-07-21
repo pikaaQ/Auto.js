@@ -61,8 +61,26 @@ PC → 手机: {"type":"pong", "data":{}}
 
 ### PC → 手机（推送项目/文件）
 
-1. 先发二进制数据帧
-2. 再发 JSON: `{"type":"bytes_command", "command":"run_project", "md5":"...", "data":{...}}`
+1. 先发二进制数据帧（App 按 MD5 缓存）
+2. 再发 JSON 元数据（`bytes_command` 类型）
+
+支持的 `bytes_command`：
+
+| command | data 字段 | 说明 |
+|---------|-----------|------|
+| `run_project` | id, name | 推送 ZIP 项目并执行 |
+| `save_project` | id, name | 推送 ZIP 项目到 App 保存（不执行） |
+| `push_file` | path | 推送单个文件（按 path 写入手机） |
+
+`save_project` 示例：
+```json
+{"type":"bytes_command", "message_id":"...", "command":"save_project", "md5":"abc123", "data":{"id":"MyProject", "name":"MyProject"}}
+```
+
+`push_file` 示例：
+```json
+{"type":"bytes_command", "message_id":"...", "command":"push_file", "md5":"def456", "data":{"path":"/sdcard/脚本/test.js"}}
+```
 
 ### 手机 → PC（回传截图/文件）
 
