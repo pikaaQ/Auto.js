@@ -383,6 +383,18 @@ shutil.rmtree(tmpdir, ignore_errors=True)
 # 文件在手机上位于 {scriptDir}/tmp*/ 下，可在 App 中重命名
 ```
 
+> ⚠️ `save_project` **不支持指定路径**，所有文件始终推送到脚本根目录（`/sdcard/脚本/`）下的项目文件夹中。如需将文件移动到其他目录，需额外执行一个移动脚本，例如：
+> ```python
+> import json, socket
+> payload = json.dumps({"cmd": "exec", "script":
+>     'files.move("/sdcard/脚本/tmp/config.json", "/sdcard/其他目录/config.json");'
+>     'console.log("moved")', "wait": True})
+> s = socket.socket(); s.settimeout(10)
+> s.connect(("127.0.0.1", 19317))
+> s.sendall((payload + "\n").encode())
+> print(s.recv(65535).decode()); s.close()
+> ```
+
 ## 连接断开处理
 
 如果操作过程中连接断开（命令返回 `"手机未连接"`）：
