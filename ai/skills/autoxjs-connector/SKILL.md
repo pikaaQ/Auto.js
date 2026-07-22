@@ -273,6 +273,19 @@ resp = s.recv(65535); print(resp.decode()); s.close()
 以下是在本项目中验证过的可靠操作方式。推荐使用 TCP 直连方式（绕过 `--send`，对大脚本更稳定）。
 
 ### 推送并保存脚本到手机
+
+> ⚠️ `save` **不支持指定子目录路径**，文件始终保存到脚本根目录 `/sdcard/脚本/` 下，无法保存到子文件夹。如需移动到其他目录，需额外用 `exec` 执行移动脚本：
+> ```python
+> import json, socket
+> payload = json.dumps({"cmd": "exec", "script":
+>     'files.move("/sdcard/脚本/文件名.js", "/sdcard/脚本/子目录/文件名.js");'
+>     'console.log("moved")', "wait": True})
+> s = socket.socket(); s.settimeout(10)
+> s.connect(("127.0.0.1", 19317))
+> s.sendall((payload + "\n").encode())
+> print(s.recv(65535).decode()); s.close()
+> ```
+
 ```python
 import json, socket, time
 script = open('本地脚本.js', encoding='utf-8').read()
@@ -382,18 +395,6 @@ resp = s.recv(65535); print(resp.decode()); s.close()
 shutil.rmtree(tmpdir, ignore_errors=True)
 # 文件在手机上位于 {scriptDir}/tmp*/ 下，可在 App 中重命名
 ```
-
-> ⚠️ `save_project` **不支持指定路径**，所有文件始终推送到脚本根目录（`/sdcard/脚本/`）下的项目文件夹中。如需将文件移动到其他目录，需额外执行一个移动脚本，例如：
-> ```python
-> import json, socket
-> payload = json.dumps({"cmd": "exec", "script":
->     'files.move("/sdcard/脚本/tmp/config.json", "/sdcard/其他目录/config.json");'
->     'console.log("moved")', "wait": True})
-> s = socket.socket(); s.settimeout(10)
-> s.connect(("127.0.0.1", 19317))
-> s.sendall((payload + "\n").encode())
-> print(s.recv(65535).decode()); s.close()
-> ```
 
 ## 连接断开处理
 
