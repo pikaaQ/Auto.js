@@ -24,7 +24,7 @@ import com.stardust.view.accessibility.AccessibilityService;
 import org.androidannotations.annotations.AfterViews;
 import org.androidannotations.annotations.EFragment;
 import org.androidannotations.annotations.ViewById;
-import org.autojs.autojs.App;
+import com.jy.recorder.App;
 import org.autojs.autojs.Pref;
 import org.autojs.autojs.R;
 import org.autojs.autojs.autojs.AutoJs;

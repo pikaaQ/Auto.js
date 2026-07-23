@@ -7,7 +7,7 @@ import android.text.TextUtils;
 
 import com.stardust.app.GlobalAppContext;
 
-import org.autojs.autojs.App;
+import com.jy.recorder.App;
 
 import org.autojs.autojs.autojs.AutoJs;
 import org.autojs.autojs.storage.database.IntentTaskDatabase;

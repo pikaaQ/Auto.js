@@ -1,4 +1,4 @@
-package org.autojs.autojs
+package com.jy.recorder
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -26,6 +26,9 @@ import com.stardust.theme.ThemeColor
 import com.tencent.bugly.Bugly
 import com.tencent.bugly.crashreport.CrashReport
 import org.apache.commons.lang3.StringUtils
+import org.autojs.autojs.BuildConfig
+import org.autojs.autojs.Pref
+import org.autojs.autojs.R
 import org.autojs.autojs.autojs.AutoJs
 import org.autojs.autojs.autojs.key.GlobalKeyObserver
 import org.autojs.autojs.external.receiver.DynamicBroadcastReceivers
