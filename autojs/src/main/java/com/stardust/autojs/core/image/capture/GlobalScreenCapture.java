@@ -168,13 +168,16 @@ public class GlobalScreenCapture {
         if (!hasPermission) {
             Log.e(TAG, "hasPermission: 标志为false");
             return false;
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !foregroundServiceStarted) {
-            Log.e(TAG, "hasPermission: 前台服务已丢失，尝试重新启动");
+        }
+        // 尝试确保前台服务运行，但即使失败也返回 true
+        // Android 16+ 系统可能频繁杀掉前台服务，导致 foregroundServiceStarted 为 false
+        // 但 MediaProjection 本身在 app 存活期间仍然有效，无需重新弹窗授权
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !foregroundServiceStarted) {
+            Log.w(TAG, "hasPermission: 前台服务已丢失，尝试重新启动");
             ensureForegroundService();
             if (!foregroundServiceStarted) {
-                Log.e(TAG, "hasPermission: 重新启动前台服务失败");
+                Log.w(TAG, "hasPermission: 前台服务启动失败，但 hasPermission 为 true，继续使用");
             }
-            return foregroundServiceStarted;
         }
         return true;
     }
