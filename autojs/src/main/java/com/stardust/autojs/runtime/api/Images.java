@@ -78,42 +78,56 @@ public class Images {
     public ScriptPromiseAdapter requestScreenCapture(int orientation) {
         ScriptRuntime.requiresApi(21);
         ScriptPromiseAdapter promiseAdapter = new ScriptPromiseAdapter();
+        Log.d(TAG, "requestScreenCapture: 开始 orientation=" + orientation + " hasPermission="
+                + GlobalScreenCapture.getInstance().hasPermission());
+
         if (GlobalScreenCapture.getInstance().hasPermission()) {
             synchronized (GlobalScreenCapture.getInstance()) {
                 if (GlobalScreenCapture.getInstance().hasPermission()) {
-                    Log.d(TAG, "requestScreenCapture hasPermission 直接注册");
+                    Log.d(TAG, "requestScreenCapture: 路径1 hasPermission 直接注册");
                     GlobalScreenCapture.getInstance().setOrientation(orientation);
                     GlobalScreenCapture.getInstance().register(mScriptRuntime.get());
                     new Thread(() -> {
                         promiseAdapter.awaitResolver();
                         new Handler(Looper.getMainLooper()).postDelayed(() -> promiseAdapter.resolve(true), 50);
                     }).start();
+                    Log.d(TAG, "requestScreenCapture: 路径1 返回 promise");
                     return promiseAdapter;
+                } else {
+                    Log.w(TAG, "requestScreenCapture: 路径1 外层通过但内层 hasPermission=false");
                 }
             }
+        } else {
+            Log.d(TAG, "requestScreenCapture: 路径1 hasPermission=false，尝试路径2 tryRestore");
         }
 
         // 尝试从侧边栏已保存的授权数据恢复，避免重新弹窗
         if (GlobalScreenCapture.getInstance().tryRestore()) {
-            Log.d(TAG, "requestScreenCapture tryRestore 成功，直接注册");
+            Log.d(TAG, "requestScreenCapture: 路径2 tryRestore 成功，直接注册");
             GlobalScreenCapture.getInstance().setOrientation(orientation);
             GlobalScreenCapture.getInstance().register(mScriptRuntime.get());
             new Thread(() -> {
                 promiseAdapter.awaitResolver();
                 new Handler(Looper.getMainLooper()).postDelayed(() -> promiseAdapter.resolve(true), 50);
             }).start();
+            Log.d(TAG, "requestScreenCapture: 路径2 返回 promise");
             return promiseAdapter;
+        } else {
+            Log.d(TAG, "requestScreenCapture: 路径2 tryRestore 失败，走路径3 弹窗授权");
         }
 
         mScreenCaptureRequester.setOnActivityResultCallback((result, data) -> {
+            Log.d(TAG, "requestScreenCapture: 路径3 弹窗结果 result=" + result + " data=" + (data != null));
             if (result == Activity.RESULT_OK) {
                 GlobalScreenCapture.getInstance().initCapture(mContext, data, orientation);
                 GlobalScreenCapture.getInstance().register(mScriptRuntime.get());
                 promiseAdapter.resolve(true);
             } else {
+                Log.w(TAG, "requestScreenCapture: 路径3 用户拒绝授权");
                 promiseAdapter.resolve(false);
             }
         });
+        Log.d(TAG, "requestScreenCapture: 路径3 发起弹窗请求");
         mScreenCaptureRequester.request();
         return promiseAdapter;
     }
@@ -136,14 +150,15 @@ public class Images {
     }
 
     public synchronized Image captureScreenRaw() {
-        Log.d(TAG, "captureScreen: 请求截图 " + mScriptRuntime.get().loopers.getMainLooper().getThread().getName());
+        Log.d(TAG, "captureScreen: 请求截图 " + (mScriptRuntime.get() != null ? mScriptRuntime.get().loopers.getMainLooper().getThread().getName() : "null"));
         ScriptRuntime.requiresApi(21);
         if (!GlobalScreenCapture.getInstance().hasPermission()) {
+            Log.e(TAG, "captureScreen: hasPermission=false 抛出 SecurityException");
             throw new SecurityException("No screen capture permission");
         }
         long start = System.currentTimeMillis();
         Image capture = GlobalScreenCapture.getInstance().capture();
-        Log.d(TAG, "captureScreen: capture screen cost: " + (System.currentTimeMillis() - start) + "ms");
+        Log.d(TAG, "captureScreen: 成功 cost=" + (System.currentTimeMillis() - start) + "ms");
         return capture;
     }
 
@@ -296,6 +311,7 @@ public class Images {
     }
 
     public void releaseScreenCapturer() {
+        Log.d(TAG, "releaseScreenCapturer: hasPermission=" + GlobalScreenCapture.getInstance().hasPermission());
         if (GlobalScreenCapture.getInstance().hasPermission()) {
             synchronized (GlobalScreenCapture.getInstance()) {
                 GlobalScreenCapture.getInstance().unregister(mScriptRuntime.get());
