@@ -147,6 +147,15 @@ repositories {
     google()
 }
 
+configurations.all {
+    resolutionStrategy {
+        // com.twofortyfouram 系列只有 JCenter 上有旧版本，JCenter 已停服
+        // 使用 Maven Central 上可用的新版保证构建通过
+        force 'com.twofortyfouram:android-annotation:3.0.0'
+        force 'com.twofortyfouram:android-assertion:2.0.0'
+    }
+}
+
 dependencies {
 //    implementation fileTree(dir: 'libs', include: ['*.jar'])
     // TensorFlow-lite

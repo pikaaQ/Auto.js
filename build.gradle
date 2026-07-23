@@ -27,9 +27,9 @@ allprojects {
         google()
         maven { url "https://jitpack.io" }
         maven { url 'https://oss.sonatype.org/content/repositories/snapshots/' }
+        // 阿里云镜像作为备用源，包含部分已停服 JCenter 的缓存 artifact
         maven { url "https://maven.aliyun.com/repository/central" }
         maven { url "https://maven.aliyun.com/repository/google" }
-        maven { url "https://maven.aliyun.com/repository/gradle-plugin" }
         maven { url "https://maven.aliyun.com/repository/jcenter" }
         maven { url "https://maven.aliyun.com/repository/public" }
     }
