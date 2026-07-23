@@ -18,3 +18,8 @@
 *.log
 .settings/
 .vscode/
+.omo
+doc
+__pycache__/
+phone_data/
+scripts/
