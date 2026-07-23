@@ -393,22 +393,31 @@ public class GlobalScreenCapture {
         Log.d(TAG, "新引擎注册：" + (looper != null ? looper.getThread().getName() : runtime.engines.myEngine().toString()) + " hasPermission? " + hasPermission);
         noRegister = false;
         registeredRuntimes.put(runtime, true);
+        // 如果 MediaProjection 仍在但 VirtualDisplay 已被 release() 释放，重新创建截图管道
+        if (mMediaProjection != null && mVirtualDisplay == null) {
+            Log.d(TAG, "register: MediaProjection 存活但 VirtualDisplay 为空，重新创建");
+            refreshVirtualDisplay(getOrientation());
+        }
     }
 
     private void release() {
-        Log.w(TAG, "release: 开始释放截图资源 hasPermission=" + hasPermission + " foregroundServiceStarted=" + foregroundServiceStarted);
+        Log.w(TAG, "release: 释放截图资源（保留 MediaProjection 权限） hasPermission=" + hasPermission + " foregroundServiceStarted=" + foregroundServiceStarted);
         noRegister = true;
-        hasPermission = false;
+        // 保留截图权限标志，使得下次脚本运行时无需重新授权
+        // hasPermission = false;
         mOrientation = -1;
-        foregroundServiceStarted = false;
+        // 保留前台服务，避免 Android 12+ 权限丢失
+        // foregroundServiceStarted = false;
         if (mImageAcquireLooper != null) {
             mImageAcquireLooper.quit();
             mImageAcquireLooper = null;
         }
-        if (mMediaProjection != null) {
-            mMediaProjection.stop();
-            mMediaProjection = null;
-        }
+        // 保留 MediaProjection 实例，这是截图权限的核心资源
+        // 一旦释放需要重新弹窗授权，Android 10+ 上 Intent 单次有效，无法用 tryRestore 恢复
+        // if (mMediaProjection != null) {
+        //     mMediaProjection.stop();
+        //     mMediaProjection = null;
+        // }
         if (mVirtualDisplay != null) {
             mVirtualDisplay.release();
             mVirtualDisplay = null;
@@ -430,7 +439,8 @@ public class GlobalScreenCapture {
             mOrientationEventListener.disable();
             mOrientationEventListener = null;
         }
-        mContext.stopService(new Intent(mContext, CaptureForegroundService.class));
+        // 保留前台服务，避免 Android 12+ 前台服务丢失导致权限不可用
+        // mContext.stopService(new Intent(mContext, CaptureForegroundService.class));
     }
 
 }
