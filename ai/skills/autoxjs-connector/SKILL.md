@@ -138,9 +138,47 @@ python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"status"}' --port 9
       description: "终止当前任务"
   ```
 
-### Step 5: 操作阶段
+### Step 5: 寻找 App 脚本根目录
 
-连接成功后，根据原始任务目标执行操作。
+**如果后续任务涉及拉取日志或手机上的项目文件，发现没有缓存根目录时, 必须先重新执行此步骤。** 
+
+#### 探测方法
+
+```python
+import json, socket, time
+
+def ctrl(cmd_data, timeout=15):
+    s = socket.socket(); s.settimeout(timeout)
+    s.connect(("127.0.0.1", 19317))
+    s.sendall((json.dumps(cmd_data) + "\n").encode())
+    time.sleep(0.5)
+    resp = s.recv(65535)
+    s.close()
+    return json.loads(resp.decode())
+
+# Step A: 推送探测脚本（fire-and-forget）
+# run 执行时 working directory = Pref.getScriptDirPath()
+# 因此 files.cwd() 就是实际脚本目录
+ctrl({"cmd": "run", "script": 'files.write("/sdcard/.sdir.txt", files.cwd());',
+      "name": ".detect_sdir.js", "wait": False})
+time.sleep(1.5)
+
+# Step B: 拉取探测结果
+result = ctrl({"cmd": "pull_file", "path": "/sdcard/.sdir.txt"})
+dir_path = "/storage/emulated/0/脚本"           # 中文默认兜底
+if result.get("success"):
+    with open(result["result"]["local_path"]) as f:
+        dir_path = f.read().strip()
+
+print(f"脚本根目录: {dir_path}")                # 记下来，后续复用
+```
+
+#### 缓存规则
+
+> ⚡ **`dir_path` 缓存在Agent的当前session记忆中。** 第一次探测到后记下来，后续所有拉日志、拉文件操作直接使用，不许每次都探测。
+
+
+### Step 6: 操作阶段
 
 ## 原子操作
 
@@ -177,7 +215,12 @@ python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file","path":
 
 ### 拉取日志
 ```bash
-python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file","path":"/sdcard/脚本/.logs/autojs-log4j.txt"}' --port 9317
+# {dir_path} 来自 Step 5 探测的脚本根目录（同一 session 已缓存）
+# 日志文件实际路径格式：`{dir_path}/.logs/autojs-log4j[-debug].txt`
+# 优先尝试 release 版本
+python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file","path":"{dir_path}/.logs/autojs-log4j.txt"}' --port 9317
+# 若不存在则尝试 release 版本
+# python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file","path":"{dir_path}/.logs/autojs-log4j-debug.txt"}' --port 9317
 ```
 
 ## 常用命令模板（经过实战验证）
@@ -198,7 +241,7 @@ resp = s.recv(65535)
 print(resp.decode()); s.close()
 ```
 
-### 推送、保存并自动执行（一步到位）
+### 推送并自动执行（不会保存到手机）
 ```python
 import json, socket, time
 script = open('本地脚本.js', encoding='utf-8').read()
@@ -228,7 +271,8 @@ resp = s.recv(65535); print(resp.decode()); s.close()
 ### 拉取手机文件（使用 TCP 直连）
 ```python
 import json, socket, time
-payload = json.dumps({"cmd": "pull_file", "path": "/sdcard/脚本/.logs/autojs-log4j.txt"})
+# {dir_path} 来自 Step 5 探测的脚本根目录
+payload = json.dumps({"cmd": "pull_file", "path": f"{dir_path}/.logs/autojs-log4j-debug.txt"})
 s = socket.socket(); s.settimeout(15)
 s.connect(("127.0.0.1", 19317))
 s.sendall((payload + "\n").encode())
@@ -268,7 +312,7 @@ s.close()
 ### 工作流
 
 ```
-推送诊断脚本并远程执行 → 拉取日志 → 分析日志 → 修复代码 → 推送修复
+推送含有详细日志的诊断脚本并远程执行 → 拉取日志 → 分析日志 → 修复代码 → 推送修复
 ```
 
 **AI 应自主完成整个闭环，无需用户介入手机操作。** 用户只需确保手机已连接。
@@ -288,30 +332,36 @@ s.close()
 
 ### Step 2: 推送并远程执行
 
-将脚本内容通过 `run` 命令推送到手机并自动执行，`wait=true` 会等待脚本执行完毕：
+> ⚠️ **`run` 命令不会回 `command_result`**，即使 `wait=true` 也会超时。正确做法：`wait=false` 推送，等几秒后直接拉日志。
 
-```bash
-python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"command","command":"run","params":{"name":"diagnose.js","script":"...script content..."},"wait":true}' --port 9317
+```python
+import json, socket, time
+
+s = socket.socket(); s.settimeout(10)
+s.connect(("127.0.0.1", 19317))
+s.sendall((json.dumps({"cmd": "run", "name": "diagnose.js",
+    "script": "console.log(\"=== 诊断开始 ===\");\n// ...诊断代码...\nconsole.log(\"=== 完毕 ===\");",
+    "wait": False}) + "\n").encode())
+time.sleep(0.5); print(s.recv(65535).decode()); s.close()
+# 脚本已在后台执行，等待日志写入
+time.sleep(3)
 ```
 
-如果脚本已保存到手机，可只传 name 远程启动：
-```bash
-python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"command","command":"run","params":{"name":"diagnose.js"},"wait":true}' --port 9317
-```
-
-`wait=true` 会阻塞直到脚本运行结束，此时日志已写入手机存储。
-
-> 也可以先用 `save` 推送，再用 `run` 远程执行（两步法）。推荐一步到位用上面第一条命令。
+也可先用 `save` 推送再用 `run` 执行（两步法）。
 
 ### Step 3: 拉取日志
 
-AutoX.js 日志文件位于手机 `/sdcard/脚本/.logs/autojs-log4j.txt`：
+用 Step 5 的探测结果 `dir_path` 构造日志路径：
 
 ```bash
-python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file","path":"/sdcard/脚本/.logs/autojs-log4j.txt"}' --port 9317
+# {dir_path} 来自 Step 5（同一 session 已缓存）
+# 优先 debug 版本，若失败则尝试 release 版本
+python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file","path":"{dir_path}/.logs/autojs-log4j-debug.txt"}' --port 9317
 ```
 
-成功拉取后，日志保存在 `phone_data/autojs-log4j.txt`。找到诊断脚本标记头（如 `=== 诊断名称 ===`）到最后之间的内容进行分析。
+日志格式：`{dir_path}/.logs/autojs-log4j[-debug].txt`
+
+成功拉取后，日志保存在 `phone_data/` 下。找到诊断脚本标记头（如 `=== 诊断名称 ===`）到最后之间的内容进行分析。
 
 ### Step 4: 分析日志
 
@@ -329,13 +379,16 @@ python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"pull_file","path":
 
 ## 提示
 
-### exec 命令的局限性
+### exec 命令的局限性（重要）
 
 ```bash
 python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"exec","script":"1+1"}' --port 9317
 ```
 
-`exec` 适用于返回简单值的表达式，但对于涉及 UI 操作、异步等待的复杂脚本，返回值可能为空。复杂调试请使用上面的**诊断工作流**（推送 → 运行 → 拉日志）。
+**`exec` 的 `result` 始终为空 `{}`。** 经源码验证 `onSuccess` 的 result 参数始终为 null，无法获取返回值。需要返回值的场景请用 **`run` fire-and-forget + 写文件 → `pull_file`**。
+
+- ✅ `exec` 可触发副作用：toast、文件写入、console.log
+- ❌ `exec` 不可获取任何返回值
 
 ### 常见坑
 
@@ -344,8 +397,9 @@ python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"exec","script":"1+
 | `widget.desc` 返回函数引用 | desc 是方法不是属性 | 用 `widget.desc()` |
 | `findOne(2000)` 返回 null | 超时太短或选择器不匹配 | 确认 desc/text 是否存在，增大超时 |
 | 点击无效 | 组件 clickable=false | 直接用 `.click()` 仍可触发坐标点击 |
-| `exec` 返回空 result | 脚本涉及 UI/异步操作 | 改用推送脚本 + 拉日志方式 |
-| 日志找不到 | 路径不对 | 默认在 `/sdcard/脚本/.logs/autojs-log4j.txt` |
+| `exec` 返回空 result | `onSuccess` 的 result 始终为 null | 用 `run` + 写文件 + `pull_file` |
+| 日志找不到 | 路径不对（因语言/设置不同） | 先执行 Step 5 探测 `dir_path` |
+| `run` 带 `wait=true` 超时 | `run` 不回 `command_result` | 用 `wait=false`，等几秒后拉日志 |
 
 ## 终止
 

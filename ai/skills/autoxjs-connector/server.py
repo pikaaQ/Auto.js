@@ -134,6 +134,7 @@ class AutoJSServer:
             self.port,
             ping_interval=10,
             ping_timeout=30,
+            max_size=2**30,  # 1GB，避免大文件（如日志）被 WebSocket 帧限制截断
         )
         # TCP 控制接口
         self._ctrl_server = await asyncio.start_server(
