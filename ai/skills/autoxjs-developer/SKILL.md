@@ -54,24 +54,6 @@ my-script-project/            ← 项目根目录（git / opencode / 辅助文�
 
 > 推送项目时 `project_dir` 指向**同名子目录**（即包含 `project.json` 的目录），而非根目录。
 
-### 本项目的目录结构
-
-当前项目（Auto.js）是 Android 工程 + 手机脚本的混合仓库，遵循同样的约定：
-
-```
-Auto.js/                      ← 项目根目录
-├── Auto.js/                  ← 手机脚本目录（推送到手机的目标）
-│   ├── main.js
-│   └── ...
-├── phone_data/               ← 从手机拉取的文件
-├── ai/skills/                ← opencode 技能源码
-├── app/                      ← Android App 源码
-├── autojs/                   ← autojs 核心库
-├── common/                   ← 公共库
-├── .omo/                     ← opencode 配置
-└── .git/                     ← 版本控制
-```
-
 ## 脚本参考
 
 本技能提供了 AutoX.js API 的脚本示例，位于 `sample/` 目录下。在编写脚本时，如需使用 autoX.js 的特定 API（如 OCR、HTTP 请求、文件读写、UI 控件操作等），**优先参考 `sample/` 下对应分类的脚本**，了解 API 的调用方式和参数格式。
