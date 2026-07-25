@@ -36,6 +36,42 @@ cp -r ${skill_base_dir}/autoxjs-developer ~/.config/opencode/skills/
 
 安装后**重启 opencode** 使技能生效。
 
+## 项目目录结构约定
+
+项目根目录采用**双层结构**，同名子目录存放实际项目源码，与手机同步：
+
+```
+my-script-project/            ← 项目根目录（git / opencode / 辅助文件）
+├── my-script-project/        ← 同名子目录，实际项目源码，与手机双向同步
+│   ├── project.json          ← 项目定义（必需，格式见下方）
+│   ├── main.js               ← 入口脚本
+│   └── ...                   ← 其他脚本/资源文件
+├── phone_data/               ← 从手机拉取的文件（日志、截图等），不同步到手机
+├── .omo/                     ← opencode 配置
+├── .git/                     ← 版本控制
+└── ...                       ← 编译临时文件等辅助路径
+```
+
+> 推送项目时 `project_dir` 指向**同名子目录**（即包含 `project.json` 的目录），而非根目录。
+
+### 本项目的目录结构
+
+当前项目（Auto.js）是 Android 工程 + 手机脚本的混合仓库，遵循同样的约定：
+
+```
+Auto.js/                      ← 项目根目录
+├── Auto.js/                  ← 手机脚本目录（推送到手机的目标）
+│   ├── main.js
+│   └── ...
+├── phone_data/               ← 从手机拉取的文件
+├── ai/skills/                ← opencode 技能源码
+├── app/                      ← Android App 源码
+├── autojs/                   ← autojs 核心库
+├── common/                   ← 公共库
+├── .omo/                     ← opencode 配置
+└── .git/                     ← 版本控制
+```
+
 ## 脚本参考
 
 本技能提供了 AutoX.js API 的脚本示例，位于 `sample/` 目录下。在编写脚本时，如需使用 autoX.js 的特定 API（如 OCR、HTTP 请求、文件读写、UI 控件操作等），**优先参考 `sample/` 下对应分类的脚本**，了解 API 的调用方式和参数格式。
@@ -145,6 +181,8 @@ time.sleep(3)  # 等日志写入
 ### 推送项目到手机
 
 使用 `save_project`（仅保存）或 `run_project`（保存并执行）推送整个项目目录到手机。
+
+> ⚠️ `project_dir` 指向**同名子目录**（包含 `project.json` 的目录），而非项目根目录。
 
 > ⚠️ **项目必须包含 `project.json`**，字段要求：
 > ```json
