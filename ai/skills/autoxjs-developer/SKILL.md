@@ -41,15 +41,20 @@ cp -r ${skill_base_dir}/autoxjs-developer ~/.config/opencode/skills/
 项目根目录采用**双层结构**，同名子目录存放实际项目源码，与手机同步：
 
 ```
-my-script-project/            ← 项目根目录（git / opencode / 辅助文件）
-├── my-script-project/        ← 同名子目录，实际项目源码，与手机双向同步
-│   ├── project.json          ← 项目定义（必需，格式见下方）
-│   ├── main.js               ← 入口脚本
-│   └── ...                   ← 其他脚本/资源文件
-├── phone_data/               ← 从手机拉取的文件（日志、截图等），不同步到手机
-├── .omo/                     ← opencode 配置
-├── .git/                     ← 版本控制
-└── ...                       ← 编译临时文件等辅助路径
+my-script-project/                ← 项目根目录（git / opencode / 辅助文件）
+├── my-script-project/            ← 同名子目录，实际项目源码，与手机双向同步
+│   ├── project.json              ← 项目定义（必需，格式见下方）
+│   ├── main.js                   ← 入口脚本
+│   └── ...                       ← 其他脚本/资源文件
+├── my-script-project_test/       ← 诊断项目，用于截图OCR诊断，长期存在
+│   ├── project.json              ← name: "{project_name}_test", main: "main.js"
+│   ├── main.js                   ← 诊断脚本，每次按需修改
+│   └── pic/
+│       └── .gitkeep              ← 占位，诊断时替换为当前截图 diag.png
+├── phone_data/                   ← 从手机拉取的文件（日志、截图等），不同步到手机
+├── .omo/                         ← opencode 配置
+├── .git/                         ← 版本控制
+└── ...                           ← 编译临时文件等辅助路径
 ```
 
 > 推送项目时 `project_dir` 指向**同名子目录**（即包含 `project.json` 的目录），而非根目录。
@@ -249,7 +254,9 @@ waitForActivity("TargetActivity", 5000);
 
 当需要编写操作脚本时，先用以下固定手段**探索**页面结构：
 
-1. **截图 + mlkocr**：使用 AutoX.js 脚本截取当前页面，用 `mlkocr` 识别文字
+1. **截图 + mlkocr**：
+   - **探索/验证/诊断阶段**：使用 connector 的 `screenshot` 命令截图（避免在临时诊断脚本中使用 `snapshot()` 反复申请权限），将截图保存到本地后用 `mlkocr` 识别文字；如需在手机端 OCR，则通过 `run_project` 将截图作为诊断项目的一部分推送到手机执行（详见「截图-诊断项目推送」）
+   - **正式脚本**：直接在脚本中使用 `snapshot()` 截图（运行一次授权即可，属于正常使用场景）
 2. **Dump 组件树**：获取当前界面 UI 组件树 XML，分析组件的 className、desc、text、bounds、clickable 等属性
 
 结合 OCR 结果和组件树信息判断如何执行操作。
@@ -267,6 +274,8 @@ waitForActivity("TargetActivity", 5000);
    - 使用：`desc("按钮").findOne(3000)`、`textContains("确认").click()`
 2. **🥈 OCR 文字识别（mlkocr）** — 当组件无 desc/text 属性时使用
    - 使用：截图 → 裁剪 → mlkocr 识别文字坐标 → 点击坐标
+   - **正式脚本**中使用 `snapshot()` 截图（正常权限申请，运行一次授权即可）
+   - **探索/验证/诊断阶段**避免在临时脚本中使用 `snapshot()`（反复申请权限影响效率），改用 connector 的 `screenshot` 命令截图后通过 `run_project` 推送诊断项目到手机进行 OCR（详见「截图-诊断项目推送」）
    - 如果 mlkocr 识别结果不理想，使用**模糊匹配**：
      - **目标文字量多**（≥3个字）：匹配文字量达到目标文字的 60% 以上即通过
      - **目标文字量少**（<3个字）：所有文字相似的结果都纳入匹配，只要命中其中一个即通过
@@ -288,8 +297,7 @@ waitForActivity("TargetActivity", 5000);
 ### Step 1: 编写诊断脚本
 
 在 `/tmp/{project_name}/` 下创建诊断脚本（`{project_name}` 为当前项目目录名，如 `Auto.js`），包含：
-- `console.show()` 显示控制台
-- 使用 `log()` 输出探测结果
+- 使用 `log()` 输出探测结果（**不要调用 `console.show()`**，控制台窗口遮挡屏幕会导致 OCR 不准）
 - 逐一测试可能的查找方式并打印结果
 - 通过最后一条日志 `=== 完毕 ===` 标记结束
 
@@ -374,6 +382,114 @@ ctrl({"cmd": "run", "script": 'files.remove(files.cwd() + "/.cleanup.js");\n' +
       'files.remove(files.cwd() + "/.cleanup_sdir.js");',
       "name": ".cleanup_self.js", "wait": False})
 ```
+
+### 截图-诊断项目推送
+
+当手机端 `captureScreen()` / `snapshot()` 每次都需要授权弹窗（如 MIUI），且需要使用手机端 MLKit OCR 进行分析时，使用此方案。
+
+#### 原则
+
+在项目初始化阶段，`_test/` 诊断项目目录即建好，作为项目标配长期存在。每次诊断时复用此项目，仅替换截图和调整脚本，用完不清除。
+
+```
+my-script-project_test/           ← 诊断项目，项目初始化时创建，长期存在
+├── project.json                  ← name: "{project_name}_test", main: "main.js"
+├── main.js                       ← 诊断脚本，每次按需修改
+└── pic/
+    ├── .gitkeep                  ← 占位，确保目录提交到 git
+    └── diag.png                  ← 每次诊断时替换为当前截图
+```
+
+#### 流程
+
+**Step 1: 截图**
+
+使用 connector `screenshot` 命令将当前界面截图拉取到 PC `phone_data/`：
+
+```bash
+python3 "${connector_skill_dir}/server.py" --send '{"cmd":"screenshot"}' --port 9317
+# 截图保存到 phone_data/screenshot_xxx.png
+```
+
+**Step 2: 替换截图 + 编写诊断脚本**
+
+```bash
+cp phone_data/screenshot_xxx.png {project_root}_test/pic/diag.png
+```
+
+编辑 `{project_root}_test/main.js`，按本次诊断目标编写脚本。核心逻辑模板：
+
+> ⚠️ **诊断脚本不要打开 console**：`console.show()` 会在屏幕上叠加控制台窗口，遮挡部分界面内容，导致 OCR 识别结果不准（尤其影响 `adRegion` 右上角裁剪区域）。诊断脚本应直接使用 `log()` 输出，日志会自动写入文件，通过 `pull_file` 拉取查看。
+
+```javascript
+"autojs";
+// 不要调用 console.show() — 遮挡屏幕会导致 OCR 不准
+log("=== 截图OCR诊断开始 ===");
+
+var img = images.read("pic/diag.png");
+if (!img) {
+  log("❌ 无法读取 pic/diag.png");
+  exit();
+}
+
+var raw = $mlKitOcr.detect(img);
+log("OCR 结果数量: %d", raw ? raw.length : 0);
+for (var i = 0; i < (raw ? raw.length : 0); i++) {
+  log("OCR[%d]: label=%s bounds=[%d,%d,%d,%d]",
+    i, raw[i].label,
+    raw[i].bounds.left, raw[i].bounds.top,
+    raw[i].bounds.right, raw[i].bounds.bottom);
+}
+img.recycle();
+
+// 在此处添加针对性的关键词匹配测试
+// ...
+
+log("=== 诊断完毕 ===");
+```
+
+**Step 3: 推送并执行**
+
+使用 `run_project` 将诊断项目推送到手机并自动执行：
+
+```python
+import json, socket, time
+
+s = socket.socket(); s.settimeout(30)
+s.connect(("127.0.0.1", 19317))
+s.sendall((json.dumps({
+  "cmd": "run_project",
+  "project_dir": "/absolute/path/{project_root}_test"
+}) + "\n").encode())
+time.sleep(5)
+print(s.recv(65535).decode()[:500])
+s.close()
+```
+
+手机上项目路径为 `{脚本根目录}/{project_name}_test/`，`files.cwd()` 即此目录。`main.js` 中的 `images.read("pic/diag.png")` 可正常读取。
+
+**Step 4: 拉取日志**
+
+```bash
+python3 "${connector_skill_dir}/server.py" --send '{"cmd":"pull_file","path":"{dir_path}/.logs/autojs-log4j-debug.txt"}' --port 9317
+```
+
+日志保存在 `phone_data/` 下，分析诊断输出。
+
+#### 优点
+
+- **零权限弹窗**：connector `screenshot` 走服务端截图（已授权），诊断脚本无需 `captureScreen()`
+- **项目级复用**：`_test/` 目录永久存在，每次只替换 `pic/diag.png` 和调整 `main.js`
+- **路径确定**：`files.cwd()` 固定指向项目根目录，相对路径可移植
+- **不污染原项目**：诊断代码和截图隔离在 `_test/` 下
+- **git 友好**：`.gitkeep` 占位保留目录结构，`pic/` 下的截图通过 `.gitignore` 排除
+
+#### 注意事项
+
+- `project.json` 必须包含 name/packageName/versionName/versionCode/main 五个字段
+- 确保 `pic/` 下只有诊断所需的图片，避免无关文件随项目推送
+- 每次诊断前先替换 `pic/diag.png`，防止使用旧截图
+- 不需要清理手机端项目目录 — 下次诊断直接覆盖推送即可
 
 ## 常见开发问题
 
