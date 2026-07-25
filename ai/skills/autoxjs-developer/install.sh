@@ -33,15 +33,9 @@ if [ -e "${GLOBAL_DIR}" ]; then
     rm -rf "${GLOBAL_DIR}"
 fi
 
-# Create symlink (preferred - stays in sync with project updates)
-if command -v ln &> /dev/null; then
-    ln -s "${SOURCE_DIR}" "${GLOBAL_DIR}"
-    echo "✅ 符号链接已创建: ${GLOBAL_DIR} → ${SOURCE_DIR}"
-else
-    # Fallback: copy
-    cp -r "${SOURCE_DIR}" "${GLOBAL_DIR}"
-    echo "✅ 已复制到: ${GLOBAL_DIR}"
-fi
+# 复制到全局目录（使用 copy 而非 symlink，确保 skill base directory 正确解析）
+cp -r "${SOURCE_DIR}" "${GLOBAL_DIR}"
+echo "✅ 已安装到: ${GLOBAL_DIR}"
 
 echo ""
 echo "📋 安装完成！使用方式："
@@ -50,7 +44,7 @@ echo "  1. 重启 opencode（技能在启动时加载，不热重载）"
 echo "  2. 确保 autoxjs-connector 也已全局安装"
 echo "  3. 在任意 autoX.js 项目中，当需要编写/调试/推送脚本时，"
 echo "     技能将自动激活。"
-echo "  4. 编写脚本时可参考 ${SOURCE_DIR}/sample/ 下的 API 示例。"
+echo "  4. 编写脚本时可参考 ${GLOBAL_DIR}/sample/ 下的 API 示例。"
 echo ""
 echo "  卸载："
 echo "    rm -rf ${GLOBAL_DIR}"

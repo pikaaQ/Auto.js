@@ -146,6 +146,18 @@ time.sleep(3)  # 等日志写入
 
 使用 `save_project`（仅保存）或 `run_project`（保存并执行）推送整个项目目录到手机。
 
+> ⚠️ **项目必须包含 `project.json`**，字段要求：
+> ```json
+> {
+>   "name": "项目名",
+>   "packageName": "com.example.app",
+>   "versionName": "1.0",
+>   "versionCode": 1,
+>   "main": "main.js"
+> }
+> ```
+> 缺少这些字段会导致 `ProjectLauncher` 抛出"无效项目"异常。
+
 ```python
 import json, socket, time
 

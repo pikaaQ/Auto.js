@@ -332,9 +332,8 @@ class AutoJSServer:
         await self.device.send_json({
             "type": "bytes_command",
             "message_id": msg_id,
-            "command": command,
             "md5": md5,
-            "data": {"id": dir_name, "name": dir_name},
+            "data": {"command": command, "id": dir_name, "name": dir_name},
         })
         return {"success": True, "md5": md5, "size": len(zip_data)}
 

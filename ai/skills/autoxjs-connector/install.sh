@@ -30,15 +30,9 @@ if [ -e "${GLOBAL_DIR}" ]; then
     rm -rf "${GLOBAL_DIR}"
 fi
 
-# Create symlink (preferred - stays in sync with project updates)
-if command -v ln &> /dev/null; then
-    ln -s "${SOURCE_DIR}" "${GLOBAL_DIR}"
-    echo "✅ 符号链接已创建: ${GLOBAL_DIR} → ${SOURCE_DIR}"
-else
-    # Fallback: copy
-    cp -r "${SOURCE_DIR}" "${GLOBAL_DIR}"
-    echo "✅ 已复制到: ${GLOBAL_DIR}"
-fi
+# 复制到全局目录（使用 copy 而非 symlink，确保 skill base directory 正确解析）
+cp -r "${SOURCE_DIR}" "${GLOBAL_DIR}"
+echo "✅ 已安装到: ${GLOBAL_DIR}"
 
 echo ""
 echo "📋 安装完成！使用方式："
@@ -49,7 +43,7 @@ echo "     技能将自动激活。"
 echo ""
 echo "  首次使用："
 echo "    pip install websockets"
-echo "    python3 ${SOURCE_DIR}/server.py --port 9317 --host 0.0.0.0"
+echo "    python3 ${GLOBAL_DIR}/server.py --port 9317 --host 0.0.0.0"
 echo ""
 echo "  卸载："
 echo "    rm -rf ${GLOBAL_DIR}"

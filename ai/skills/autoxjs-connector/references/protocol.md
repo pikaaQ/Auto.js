@@ -29,8 +29,8 @@ PC → 手机: {"type":"hello", "data":{"version":"1.0.0", "debug":true}}
 | command | `rerun` | id, name, script | 重启脚本 |
 | command | `stopAll` | — | 停止所有 |
 | command | `save` | id, name, script | 保存脚本到手机 |
-| bytes_command | `run_project` | id, md5, ... | 推送并执行项目 |
-| bytes_command | `save_project` | id, md5, name | 推送并保存项目 |
+| bytes_command | `run_project` | command, id, name | 推送并执行项目（需 `project.json`） |
+| bytes_command | `save_project` | command, id, name | 推送并保存项目（需 `project.json`） |
 
 ## 扩展命令 (PC → 手机)
 
@@ -61,7 +61,7 @@ PC → 手机: {"type":"pong", "data":{}}
 ### PC → 手机（推送项目/文件）
 
 1. 先发二进制数据帧
-2. 再发 JSON: `{"type":"bytes_command", "command":"run_project", "md5":"...", "data":{...}}`
+2. 再发 JSON: `{"type":"bytes_command", "md5":"...", "data":{"command":"run_project", "id":"name", "name":"name"}}`
 
 ### 手机 → PC（回传截图/文件）
 

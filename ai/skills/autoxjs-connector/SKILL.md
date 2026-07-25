@@ -140,8 +140,8 @@ python3 "${skill_base_dir}/autoxjs-connector/server.py" --send '{"cmd":"status"}
 | 执行 JS | `{"cmd":"exec","script":"..."}` | 在手机执行 JS（**不会返回值**，见下方提示） |
 | 推送脚本 | `{"cmd":"run","script":"...","name":"x.js","wait":false}` | 推送并执行脚本（fire-and-forget） |
 | 拉取文件 | `{"cmd":"pull_file","path":"..."}` | 拉取手机文件到 `phone_data/` |
-| 保存项目 | `{"cmd":"save_project","project_dir":"..."}` | 推送项目目录到手机（仅保存，不执行） |
-| 运行项目 | `{"cmd":"run_project","project_dir":"..."}` | 推送项目目录到手机并远程执行 |
+| 保存项目 | `{"cmd":"save_project","project_dir":"..."}` | 推送项目目录到手机（仅保存，不执行）。项目需包含 `project.json`（name/packageName/versionName/versionCode/main） |
+| 运行项目 | `{"cmd":"run_project","project_dir":"..."}` | 推送项目目录到手机并远程执行。项目需包含 `project.json` |
 
 ### exec 命令的局限性（重要）
 
@@ -203,7 +203,7 @@ def ctrl(cmd_data, timeout=15):
 | screenshot | - | 截图并保存到本地 |
 | dump | - | 获取 UI 组件树 |
 | pull_file | path | 拉取手机文件 |
-| save_project | project_dir | 推送项目到手机（仅保存，不执行） |
-| run_project | project_dir | 推送项目到手机并执行 |
+| save_project | project_dir | 推送项目到手机（仅保存，不执行）。需 `project.json` |
+| run_project | project_dir | 推送项目到手机并执行。需 `project.json` |
 | wait | timeout | 等待指定秒数（用于同步） |
 | shutdown | - | 停止服务端（仅当用户明确要求关闭时使用；不要自动调用） |
