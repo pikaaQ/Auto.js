@@ -299,16 +299,15 @@ class AutoJSServer:
                 result["result"]["local_path"] = str(save_path)
         return result
 
-    async def push_project(self, project_dir: str) -> dict:
-        """推送项目到手机执行"""
+    def _zip_project(self, project_dir: str) -> tuple[bytes, str]:
+        """打包项目目录为 ZIP，返回 (zip_data, dir_name, md5)"""
         import zipfile
         import io
 
         proj_path = Path(project_dir)
         if not proj_path.is_dir():
-            return {"success": False, "error": f"目录不存在: {project_dir}"}
+            raise FileNotFoundError(f"目录不存在: {project_dir}")
 
-        # 打包为 ZIP
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for file in proj_path.rglob("*"):
@@ -317,15 +316,22 @@ class AutoJSServer:
                     zf.write(file, arcname)
         zip_data = buf.getvalue()
         md5 = hashlib.md5(zip_data).hexdigest()
+        return zip_data, proj_path.name, md5
 
-        # 协议：先发二进制，再发 JSON
+    async def push_project(self, project_dir: str) -> dict:
+        """推送项目到手机执行"""
+        try:
+            zip_data, dir_name, md5 = self._zip_project(project_dir)
+        except FileNotFoundError as e:
+            return {"success": False, "error": str(e)}
+
         await self.device.send_bytes(zip_data)
         await self.device.send_json({
             "type": "bytes_command",
-            "message_id": f"{int(time.time()*1000)}_{random.random()}",
-            "command": "run_project",
+            "message_id": msg_id,
+            "command": command,
             "md5": md5,
-            "data": {"id": proj_path.name, "name": proj_path.name},
+            "data": {"id": dir_name, "name": dir_name},
         })
         return {"success": True, "md5": md5, "size": len(zip_data)}
 

@@ -19,26 +19,14 @@ pip install websockets
 
 ```bash
 # 方法一：使用安装脚本（推荐 — 符号链接，与项目源码保持同步）
-bash ai/skills/autoxjs-connector/install.sh
+bash ${skill_base_dir}/autoxjs-connector/install.sh
 
 # 方法二：手动复制
 mkdir -p ~/.config/opencode/skills
-cp -r ai/skills/autoxjs-connector ~/.config/opencode/skills/
+cp -r ${skill_base_dir}/autoxjs-connector ~/.config/opencode/skills/
 ```
 
 安装后**重启 opencode** 使技能生效。
-
-### 只对当前项目生效（无需安装，不推荐）
-
-技能源码在本项目的 `ai/skills/autoxjs-connector/` 下。要让 opencode 发现它，需要全局安装（见上方）或将 `ai/skills` 添加到 opencode 配置的 `skills.paths` 中。
-
-### 验证安装
-
-```bash
-# 重启 opencode 后，检查技能是否可用：
-skill(name="autoxjs-connector")
-# 应返回 skill 内容而不是 "not found"
-```
 
 ## 激活条件
 
@@ -46,7 +34,7 @@ skill(name="autoxjs-connector")
 
 1. 连接/断开手机
 2. 检查连接状态
-3. 发送基础协议命令（截屏、dump、exec、run、pull_file、push_project）
+3. 发送基础协议命令（截屏、dump、exec、run、pull_file、run_project、save_project）
 4. 拉取/推送文件
 
 **脚本开发、调试、诊断等场景应使用 `autoxjs-developer` 技能。**
@@ -77,19 +65,19 @@ server 是常驻后台进程，一旦启动将持续运行，不会随任务结�
 
 先检查服务端是否已在运行：
 ```bash
-python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"status"}' --port 9317
+python3 "${skill_base_dir}/autoxjs-connector/server.py" --send '{"cmd":"status"}' --port 9317
 ```
 
 - **返回了有效状态**（包含 `"ws":` 等字段）→ 服务端已在运行且状态正常，**不要重启**，直接跳到 Step 3（引导用户连接）
 - **命令失败或返回异常** → 说明服务端未运行或状态异常；或本次任务修改了 `server.py` / 协议 / 连接相关代码 → 此时才执行下面的启动命令：
 
 ```bash
-nohup python3 ai/skills/autoxjs-connector/server.py --port 9317 --host 0.0.0.0 > /tmp/autoxjs-server.log 2>&1 &
+nohup python3 "${skill_base_dir}/autoxjs-connector/server.py" --port 9317 --host 0.0.0.0 > /tmp/autoxjs-server.log 2>&1 &
 ```
 
 验证启动：
 ```bash
-python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"status"}' --port 9317
+python3 "${skill_base_dir}/autoxjs-connector/server.py" --send '{"cmd":"status"}' --port 9317
 ```
 输出应包含 `"ws": "ws://0.0.0.0:9317"`。若失败则报错并中止流程（但 **不关闭 server**，若已部分启动则保持运行）。
 
@@ -124,7 +112,7 @@ options:
 
 用户点击"我已连接"后，检查连接状态：
 ```bash
-python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"status"}' --port 9317
+python3 "${skill_base_dir}/autoxjs-connector/server.py" --send '{"cmd":"status"}' --port 9317
 ```
 
 解析返回 JSON：
@@ -142,7 +130,7 @@ python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"status"}' --port 9
 
 ## 原子操作
 
-所有命令通过 `python3 ai/skills/autoxjs-connector/server.py --send '<json>' --port 9317` 发送。
+所有命令通过 `python3 "${skill_base_dir}/autoxjs-connector/server.py" --send '<json>' --port 9317` 发送。
 
 | 操作 | 命令 | 说明 |
 |------|------|------|
@@ -150,9 +138,10 @@ python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"status"}' --port 9
 | 截屏 | `{"cmd":"screenshot"}` | 截取手机屏幕，返回 `local_path` |
 | 获取组件树 | `{"cmd":"dump"}` | 获取当前界面 UI 组件树 (XML) |
 | 执行 JS | `{"cmd":"exec","script":"..."}` | 在手机执行 JS（**不会返回值**，见下方提示） |
-| 推送脚本 | `{"cmd":"command","command":"run","params":{"name":"x.js","script":"..."},"wait":false}` | 推送并执行脚本（fire-and-forget） |
+| 推送脚本 | `{"cmd":"run","script":"...","name":"x.js","wait":false}` | 推送并执行脚本（fire-and-forget） |
 | 拉取文件 | `{"cmd":"pull_file","path":"..."}` | 拉取手机文件到 `phone_data/` |
-| 推送项目 | `{"cmd":"push_project","project_dir":"..."}` | 推送项目目录到手机执行 |
+| 保存项目 | `{"cmd":"save_project","project_dir":"..."}` | 推送项目目录到手机（仅保存，不执行） |
+| 运行项目 | `{"cmd":"run_project","project_dir":"..."}` | 推送项目目录到手机并远程执行 |
 
 ### exec 命令的局限性（重要）
 
@@ -185,7 +174,7 @@ python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"status"}' --port 9
 
 也可通过 `--send` 命令行快捷发送，`--port` 会自动推导控制端口（port + 10000）：
 ```bash
-python3 ai/skills/autoxjs-connector/server.py --send '{"cmd":"screenshot"}' --port 9317
+python3 "${skill_base_dir}/autoxjs-connector/server.py" --send '{"cmd":"screenshot"}' --port 9317
 ```
 
 ### TCP 直连模板
@@ -209,10 +198,12 @@ def ctrl(cmd_data, timeout=15):
 |-----|------|------|
 | status | - | 查询连接状态 |
 | command | command, params, wait | 发送原始命令（wait=true 等待结果 / false 即发即走） |
-| run | script, name, wait | 推送执行脚本（默认 wait=false） |
+| run | script, name, wait | 推送执行脚本（默认 wait=false，fire-and-forget） |
 | exec | script, wait | 执行 JS 并返回结果（**始终返回空 result**） |
 | screenshot | - | 截图并保存到本地 |
 | dump | - | 获取 UI 组件树 |
 | pull_file | path | 拉取手机文件 |
-| push_project | project_dir | 推送项目到手机 |
+| save_project | project_dir | 推送项目到手机（仅保存，不执行） |
+| run_project | project_dir | 推送项目到手机并执行 |
+| wait | timeout | 等待指定秒数（用于同步） |
 | shutdown | - | 停止服务端（仅当用户明确要求关闭时使用；不要自动调用） |

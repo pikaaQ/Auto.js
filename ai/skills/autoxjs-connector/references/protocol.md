@@ -40,7 +40,6 @@ PC → 手机: {"type":"hello", "data":{"version":"1.0.0", "debug":true}}
 | command | `dump` | id | 获取 UI 组件树 (XML) |
 | command | `exec` | id, params: {script} | 执行 JS 并返回结果 |
 | command | `pull_file` | id, params: {path} | 拉取手机文件 |
-| command | `push_file` | id, params: {path} | 推送文件到手机（需二进制帧） |
 | close | — | — | 关闭连接 |
 
 ## 扩展回包 (手机 → PC)
