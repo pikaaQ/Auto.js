@@ -318,13 +318,16 @@ class AutoJSServer:
         md5 = hashlib.md5(zip_data).hexdigest()
         return zip_data, proj_path.name, md5
 
-    async def push_project(self, project_dir: str) -> dict:
-        """推送项目到手机执行"""
+    async def _send_bytes_command(self, command: str, project_dir: str) -> dict:
+        """通用 bytes_command：打包项目 → 发二进制 → 发 JSON → 等结果"""
+        if not self.connected:
+            return {"success": False, "error": "手机未连接"}
         try:
             zip_data, dir_name, md5 = self._zip_project(project_dir)
         except FileNotFoundError as e:
             return {"success": False, "error": str(e)}
 
+        msg_id = f"{int(time.time()*1000)}_{random.random()}"
         await self.device.send_bytes(zip_data)
         await self.device.send_json({
             "type": "bytes_command",
@@ -334,6 +337,12 @@ class AutoJSServer:
             "data": {"id": dir_name, "name": dir_name},
         })
         return {"success": True, "md5": md5, "size": len(zip_data)}
+
+    async def run_project(self, project_dir: str) -> dict:
+        return await self._send_bytes_command("run_project", project_dir)
+
+    async def save_project(self, project_dir: str) -> dict:
+        return await self._send_bytes_command("save_project", project_dir)
 
     # ─── TCP 控制接口 ──────────────────────────────
 
@@ -410,6 +419,16 @@ class AutoJSServer:
         elif cmd == "push_project":
             project_dir = req.get("project_dir", "")
             result = await self.push_project(project_dir)
+            return result
+
+        elif cmd == "run_project":
+            project_dir = req.get("project_dir", "")
+            result = await self.run_project(project_dir)
+            return result
+
+        elif cmd == "save_project":
+            project_dir = req.get("project_dir", "")
+            result = await self.save_project(project_dir)
             return result
 
         elif cmd == "shutdown":
