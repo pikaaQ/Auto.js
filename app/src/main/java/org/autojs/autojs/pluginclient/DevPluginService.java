@@ -42,6 +42,9 @@ public class DevPluginService {
     private static final String TYPE_HELLO = "hello";
     private static final String TYPE_BYTES_COMMAND = "bytes_command";
     private static final long HANDSHAKE_TIMEOUT = 10 * 1000;
+    private static final long HEARTBEAT_INTERVAL = 10 * 1000;
+    private static final int MAX_RECONNECT_ATTEMPTS = 3;
+    private static final long RECONNECT_TIMEOUT = 3 * 1000;
 
     public static class State {
 
@@ -78,6 +81,11 @@ public class DevPluginService {
     private final HashMap<String, JsonObject> mRequiredBytesCommands = new HashMap<>();
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private volatile JsonWebSocket mSocket;
+    private String mHost;
+    private volatile boolean mHeartbeatActive;
+    private final Runnable mHeartbeatTask = this::heartbeatTick;
+    private volatile boolean mIsReconnecting;
+    private int mReconnectAttempts;
 
     public static DevPluginService getInstance() {
         return sInstance;
@@ -107,6 +115,9 @@ public class DevPluginService {
 
     @AnyThread
     public void disconnect() {
+        Log.i(LOG_TAG, "disconnect: 主动断开连接, 重连=" + mIsReconnecting);
+        mIsReconnecting = false;
+        stopHeartbeat();
         mSocket.close();
         mSocket = null;
     }
@@ -117,6 +128,14 @@ public class DevPluginService {
 
     @AnyThread
     public Observable<JsonWebSocket> connectToServer(String host) {
+        Log.i(LOG_TAG, "connectToServer: host=" + host);
+        mIsReconnecting = false;
+        mReconnectAttempts = 0;
+        return connectInner(host);
+    }
+
+    @AnyThread
+    private Observable<JsonWebSocket> connectInner(String host) {
         int port = PORT;
         String ip = host;
         int i = host.lastIndexOf(':');
@@ -124,6 +143,10 @@ public class DevPluginService {
             port = Integer.parseInt(host.substring(i + 1));
             ip = host.substring(0, i);
         }
+        mHost = ip + ":" + port;
+        Log.d(LOG_TAG, "connectInner: 连接至 " + mHost + " (重连=" + mIsReconnecting + ")");
+        stopHeartbeat();
+        disconnectIfNeeded();
         mConnectionState.onNext(new State(State.CONNECTING));
 
         return socket(ip, port)
@@ -133,9 +156,13 @@ public class DevPluginService {
 
     @AnyThread
     private Observable<JsonWebSocket> socket(String ip, int port) {
-        OkHttpClient client = new OkHttpClient.Builder()
-                .readTimeout(0, TimeUnit.MILLISECONDS)
-                .build();
+        OkHttpClient.Builder builder = new OkHttpClient.Builder()
+                .readTimeout(0, TimeUnit.MILLISECONDS);
+        if (mIsReconnecting) {
+            builder.connectTimeout(RECONNECT_TIMEOUT, TimeUnit.MILLISECONDS);
+            Log.d(LOG_TAG, "socket: 重连模式, connectTimeout=" + RECONNECT_TIMEOUT + "ms");
+        }
+        OkHttpClient client = builder.build();
         String url = ip + ":" + port;
         if (!url.startsWith("ws://") && !url.startsWith("wss://")) {
             url = "ws://" + url;
@@ -154,16 +181,22 @@ public class DevPluginService {
     private void subscribeMessage(JsonWebSocket socket) {
         socket.data()
                 .observeOn(AndroidSchedulers.mainThread())
-                .doOnComplete(() -> mConnectionState.onNext(new State(State.DISCONNECTED)))
+                .doOnComplete(() -> {
+                    Log.w(LOG_TAG, "subscribeMessage: data 流结束, 触发断线");
+                    mConnectionState.onNext(new State(State.DISCONNECTED));
+                })
                 .subscribe(data -> onSocketData(socket, data), this::onSocketError);
         socket.bytes()
-                .doOnComplete(() -> mConnectionState.onNext(new State(State.DISCONNECTED)))
+                .doOnComplete(() -> {
+                    Log.w(LOG_TAG, "subscribeMessage: bytes 流结束, 触发断线");
+                    mConnectionState.onNext(new State(State.DISCONNECTED));
+                })
                 .subscribe(data -> onSocketData(socket, data), this::onSocketError);
     }
 
     @MainThread
     private void onSocketError(Throwable e) {
-        e.printStackTrace();
+        Log.e(LOG_TAG, "onSocketError: " + e.getMessage(), e);
         if (mSocket != null) {
             mConnectionState.onNext(new State(State.DISCONNECTED, e));
             mSocket.close();
@@ -186,6 +219,13 @@ public class DevPluginService {
             String type = typeElement.getAsString();
             if (type.equals(TYPE_HELLO)) {
                 onServerHello(jsonWebSocket, obj);
+                return;
+            }
+            if ("ping".equals(type)) {
+                write(mSocket, "pong", new JsonObject());
+                return;
+            }
+            if ("pong".equals(type)) {
                 return;
             }
             if (TYPE_BYTES_COMMAND.equals(type)) {
@@ -228,6 +268,7 @@ public class DevPluginService {
 
     @WorkerThread
     private void sayHelloToServer(JsonWebSocket socket) {
+        Log.d(LOG_TAG, "sayHelloToServer: 发送 hello");
         writeMap(socket, TYPE_HELLO, new MapBuilder<String, Object>()
                 .put("device_name", Build.BRAND + " " + Build.MODEL)
                 .put("client_version", CLIENT_VERSION)
@@ -243,16 +284,17 @@ public class DevPluginService {
 
     @MainThread
     private void onHandshakeTimeout(JsonWebSocket socket) {
-        Log.i(LOG_TAG, "onHandshakeTimeout");
+        Log.i(LOG_TAG, "onHandshakeTimeout: 握手超时");
         mConnectionState.onNext(new State(State.DISCONNECTED, new SocketTimeoutException("handshake timeout")));
         socket.close();
     }
 
     @MainThread
     private void onServerHello(JsonWebSocket jsonWebSocket, JsonObject message) {
-        Log.i(LOG_TAG, "onServerHello: " + message);
+        Log.i(LOG_TAG, "onServerHello: 连接成功, 启动心跳");
         mSocket = jsonWebSocket;
         mConnectionState.onNext(new State(State.CONNECTED));
+        startHeartbeat();
     }
 
     @AnyThread
@@ -331,5 +373,104 @@ public class DevPluginService {
         if (!isConnected())
             return false;
         return mSocket.sendBytes(bytes);
+    }
+
+    // ── Heartbeat ──────────────────────────────────────
+
+    @MainThread
+    private void startHeartbeat() {
+        stopHeartbeat();
+        mHeartbeatActive = true;
+        mHandler.post(mHeartbeatTask);
+    }
+
+    @MainThread
+    private void heartbeatTick() {
+        if (!mHeartbeatActive) {
+            return;
+        }
+        if (isDisconnected()) {
+            Log.w(LOG_TAG, "heartbeatTick: 检测到断线 -> 触发重连");
+            attemptReconnect();
+            return;
+        }
+        JsonObject emptyData = new JsonObject();
+        if (!write(mSocket, "ping", emptyData)) {
+            Log.w(LOG_TAG, "heartbeatTick: ping 发送失败 -> 触发重连");
+            attemptReconnect();
+            return;
+        }
+        mHandler.postDelayed(mHeartbeatTask, HEARTBEAT_INTERVAL);
+    }
+
+    @MainThread
+    private void stopHeartbeat() {
+        mHeartbeatActive = false;
+        mHandler.removeCallbacks(mHeartbeatTask);
+    }
+
+    // ── Reconnection ───────────────────────────────────
+
+    private void attemptReconnect() {
+        if (!mHeartbeatActive) {
+            Log.d(LOG_TAG, "attemptReconnect: 心跳已停止, 不重连");
+            return;
+        }
+        if (mHost == null) {
+            Log.w(LOG_TAG, "attemptReconnect: host 为 null, 无法重连");
+            return;
+        }
+        if (mIsReconnecting) {
+            Log.d(LOG_TAG, "attemptReconnect: 已在重连中, 跳过");
+            return;
+        }
+        mIsReconnecting = true;
+        mReconnectAttempts = 0;
+        Log.i(LOG_TAG, "attemptReconnect: 开始重连 -> " + mHost + " (最多 " + MAX_RECONNECT_ATTEMPTS + " 次)");
+        doReconnect();
+    }
+
+    @SuppressLint("CheckResult")
+    private void doReconnect() {
+        if (!mIsReconnecting) {
+            Log.d(LOG_TAG, "doReconnect: 重连已取消, 停止");
+            return;
+        }
+        mReconnectAttempts++;
+        if (mReconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+            Log.w(LOG_TAG, "doReconnect: 已重连 " + MAX_RECONNECT_ATTEMPTS + " 次均失败, 放弃");
+            mIsReconnecting = false;
+            stopHeartbeat();
+            mConnectionState.onNext(new State(State.DISCONNECTED));
+            return;
+        }
+        Log.i(LOG_TAG, "doReconnect: 第 " + mReconnectAttempts + " / " + MAX_RECONNECT_ATTEMPTS + " 次尝试");
+
+        connectInner(mHost)
+                .flatMap(socket -> connectionState()
+                        .filter(s -> s.getState() == State.CONNECTED || s.getState() == State.DISCONNECTED)
+                        .take(1)
+                )
+                .timeout(RECONNECT_TIMEOUT, TimeUnit.MILLISECONDS)
+                .subscribe(
+                        state -> {
+                            if (state.getState() == State.CONNECTED) {
+                                Log.i(LOG_TAG, "doReconnect: 第 " + mReconnectAttempts + " 次重连成功 ✓");
+                                mIsReconnecting = false;
+                                mReconnectAttempts = 0;
+                            } else {
+                                Throwable ex = state.getException();
+                                Log.w(LOG_TAG, "doReconnect: 第 " + mReconnectAttempts + " 次重连后断线" +
+                                        (ex != null ? ": " + ex.getMessage() : ""));
+                                throw new RuntimeException("reconnect failed: 状态=" + state.getState() +
+                                        (ex != null ? ", " + ex.getMessage() : ""));
+                            }
+                        },
+                        error -> {
+                            Log.w(LOG_TAG, "doReconnect: 第 " + mReconnectAttempts + " 次重连失败: " + error.getMessage());
+                            disconnectIfNeeded();
+                            doReconnect();
+                        }
+                );
     }
 }
