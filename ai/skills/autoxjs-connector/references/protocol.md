@@ -36,7 +36,6 @@ PC → 手机: {"type":"hello", "data":{"version":"1.0.0", "debug":true}}
 
 | type | command | data | 说明 |
 |------|---------|------|------|
-| command | `screenshot` | id | 截屏，返回图片 |
 | command | `dump` | id | 获取 UI 组件树 (XML) |
 | command | `exec` | id, params: {script} | 执行 JS 并返回结果 |
 | command | `pull_file` | id, params: {path} | 拉取手机文件 |
@@ -63,7 +62,7 @@ PC → 手机: {"type":"pong", "data":{}}
 1. 先发二进制数据帧
 2. 再发 JSON: `{"type":"bytes_command", "md5":"...", "data":{"command":"run_project", "id":"name", "name":"name"}}`
 
-### 手机 → PC（回传截图/文件）
+### 手机 → PC（回传文件）
 
 1. 先发 JSON: `{"type":"command_result", "data":{"command_id":"...", "success":true, "result":{"md5":"...", "path":"..."}}}`
 2. 再发二进制数据帧
@@ -74,11 +73,6 @@ PC → 手机: {"type":"pong", "data":{}}
 [连接建立]
 手机 → PC: {"type":"hello", "data":{"device_name":"Xiaomi 14", "client_version":2, "app_version":"7.0.0", "app_version_code":700}}
 PC → 手机: {"type":"hello", "data":{"version":"1.0.0", "debug":true}}
-
-[截图]
-PC → 手机: {"type":"command", "message_id":"1747350000_0.123", "data":{"command":"screenshot", "id":"s1"}}
-手机 → PC: {"type":"command_result", "data":{"command_id":"s1", "success":true, "result":{"md5":"abc123", "path":"screenshot_20260715_143000.png"}}}
-手机 → PC: [二进制帧: PNG 图片数据]
 
 [执行脚本]
 PC → 手机: {"type":"command", "message_id":"1747350001_0.456", "data":{"command":"exec", "id":"e1", "params":{"script":"toast('hello');"}}}

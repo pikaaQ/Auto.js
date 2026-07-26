@@ -188,16 +188,32 @@ $CALL "{\"cmd\":\"pull_file\",\"path\":\"{dir_path}/.logs/autojs-log4j.txt\",\"l
 探索页面时，test项目脚本逻辑为：
 1. 进入页面
 2. **截图 + mlkocr**：
-   与正式脚本中使用 `captureScreen()` 截图不同，探索/验证时脚本中**使用 `images.screenshotByApp(path)` 截图**（AutoX.js 内置函数，无需申请截图权限，参数 path 为截图保存路径），固定为当前test项目在手机中的目录下的pic目录。然后读取截图后用 `mlkocr` 识别文字，识别结果写入log。
-   **如果`images.screenshotByApp(path)`截图失败，提示用户开启权限，而不是自作主张采用其他方法**
+    探索/验证时脚本中**使用 Shizuku 执行 `screencap` 截图**（无需申请截图权限，无需弹窗），固定保存到当前test项目在手机中的目录下的pic目录。然后读取截图后用 `mlkocr` 识别文字，识别结果写入log。
+    **如果 Shizuku 截图失败，提示用户检查 Shizuku 是否运行，而不是自作主张采用其他方法**
 
-示例：
+示例（含绑定 + 截图）：
 ```javascript
+// === Shizuku 绑定 ===
+var proto = Object.getPrototypeOf($shizuku);
+if (!proto.isRunning()) {
+  proto.requestPermission();
+  sleep(2000);
+  // 已授权时 requestPermission 不会重新触发回调，用反射直接绑定
+  if (!proto.isRunning()) {
+    var clazz = proto.getClass();
+    var bindMethod = clazz.getDeclaredMethod("bindUserService");
+    bindMethod.setAccessible(true);
+    bindMethod.invoke(proto);
+    sleep(3000);
+  }
+}
+
+// === 截图 ===
 var path = files.cwd() + '/pic/diag.png';
 log('截图保存路径: ' + path);
-var result = images.screenshotByApp(path);
-if (!result) {
-  log('截图失败');
+var result = $shizuku("screencap -p " + path);
+if (result.code !== 0) {
+  log('截图失败: ' + result.error);
   exit();
 }
 

@@ -9,7 +9,7 @@ Usage:
 
 Control API (JSON lines over TCP on localhost:19317):
     {"cmd":"status"}                          → connection state
-    {"cmd":"command","command":"screenshot"}  → send command to phone
+    {"cmd":"command","command":"dump"}         → send command to phone
     {"cmd":"run","script":"..."}              → run script on phone
     {"cmd":"exec","script":"..."}             → exec JS, return output
     {"cmd":"wait","command_id":"..."}         → wait for specific result
@@ -264,26 +264,6 @@ class AutoJSServer:
         """执行 JS 并返回结果"""
         return await self.send_command("exec", params={"script": script}, _wait=_wait)
 
-    async def screenshot(self, local_path: str | None = None) -> dict:
-        """截图，返回保存路径。local_path 为 PC 端保存目录，默认使用 workspace。"""
-        result = await self.send_command("screenshot")
-        if result.get("success"):
-            md5 = result.get("result", {}).get("md5", "")
-            path = result.get("result", {}).get("path", "")
-            img_data = self.device.take_bytes(md5) if md5 else None
-            if img_data:
-                # path 是手机上的绝对路径，只取文件名
-                from pathlib import Path as PPath
-                save_dir = Path(local_path) if local_path else self.workspace
-                save_dir.mkdir(parents=True, exist_ok=True)
-                save_path = save_dir / PPath(path).name
-                save_path.write_bytes(img_data)
-                result["result"]["local_path"] = str(save_path)
-                result["result"]["local_size"] = len(img_data)
-            else:
-                result["warning"] = "binary data not received via WebSocket"
-        return result
-
     async def dump_ui(self) -> dict:
         """获取 UI 组件树"""
         return await self.send_command("dump")
@@ -403,11 +383,6 @@ class AutoJSServer:
             script = req.get("script", "")
             _wait = req.get("wait", True)
             result = await self.exec_js(script, _wait=_wait)
-            return result
-
-        elif cmd == "screenshot":
-            local_path = req.get("local_path", None)
-            result = await self.screenshot(local_path)
             return result
 
         elif cmd == "dump":

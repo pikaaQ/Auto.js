@@ -1,6 +1,6 @@
 ---
 name: autoxjs-connector
-description: "AutoX.js 手机连接协议。管理 WebSocket 连接、发送协议命令、文件传输。负责与 AutoX.js App 的通信层。不涉及脚本开发与调试。Triggers: 当需要连接手机、检查连接状态、发送基础命令(screenshot/dump/exec/run/pull_file)时自动激活。"
+description: "AutoX.js 手机连接协议。管理 WebSocket 连接、发送协议命令、文件传输。负责与 AutoX.js App 的通信层。不涉及脚本开发与调试。Triggers: 当需要连接手机、检查连接状态、发送基础命令(shizuku/dump/exec/run/pull_file)时自动激活。"
 ---
 
 # AutoX.js 手机连接器
@@ -34,7 +34,7 @@ cp -r ${skill_base_dir}/autoxjs-connector ~/.config/opencode/skills/
 
 1. 连接/断开手机
 2. 检查连接状态
-3. 发送基础协议命令（截屏、dump、exec、run、pull_file、run_project、save_project）
+3. 发送基础协议命令（Shizuku 截屏、dump、exec、run、pull_file、run_project、save_project）
 4. 拉取/推送文件
 
 **脚本开发、调试、诊断等场景应使用 `autoxjs-developer` 技能。**
@@ -139,7 +139,7 @@ python3 "${skill_base_dir}/autoxjs-connector/call.py" '<json命令>' --port 9317
 | 操作 | 命令 | 说明 |
 |------|------|------|
 | 查询状态 | `{"cmd":"status"}` | 返回连接状态和设备信息 |
-| 截屏 | `{"cmd":"screenshot","local_path":"项目目录/phone_data"}` | 截取手机屏幕，返回 `local_path`。`local_path` 指定 PC 保存目录（可选，默认 server 启动时指定的 workspace） |
+| Shizuku 截屏 | `{"cmd":"run","script":"...","name":"screenshot.js","wait":false}` | 通过 `run` 推送脚本，脚本内绑定 Shizuku 并执行 `screencap -p <path>` 截屏到手机。截屏后需用 `pull_file` 拉取 |
 | 获取组件树 | `{"cmd":"dump"}` | 获取当前界面 UI 组件树 (XML) |
 | 执行 JS | `{"cmd":"exec","script":"..."}` | 在手机执行 JS（**不会返回值**，见下方提示） |
 | 推送脚本 | `{"cmd":"run","script":"...","name":"x.js","wait":false}` | 推送并执行脚本（fire-and-forget） |
@@ -183,7 +183,11 @@ python3 "${skill_base_dir}/autoxjs-connector/call.py" '<json命令>' --port 9317
 # 示例
 python3 "${skill_base_dir}/autoxjs-connector/call.py" '{"cmd":"status"}' --port 9317
 python3 "${skill_base_dir}/autoxjs-connector/call.py" '{"cmd":"dump"}' --port 9317
-python3 "${skill_base_dir}/autoxjs-connector/call.py" '{"cmd":"screenshot","local_path":"./phone_data"}' --port 9317
+# Shizuku 截屏（run 推送脚本，脚本内绑定 Shizuku + screencap）
+python3 "${skill_base_dir}/autoxjs-connector/call.py" "{\"cmd\":\"run\",\"name\":\"screenshot.js\",\"script\":\"var p=Object.getPrototypeOf(\\$shizuku);if(!p.isRunning()){p.requestPermission();sleep(2000);if(!p.isRunning()){var c=p.getClass();var m=c.getDeclaredMethod('bindUserService');m.setAccessible(true);m.invoke(p);sleep(3000);}}\\$shizuku('screencap -p /sdcard/screenshot.png');\",\"wait\":false}" --port 9317
+sleep 3
+# 拉取截图
+python3 "${skill_base_dir}/autoxjs-connector/call.py" '{"cmd":"pull_file","path":"/sdcard/screenshot.png","local_path":"./phone_data"}' --port 9317
 ```
 
 `call.py` 内部自动处理 TCP 连接、循环接收（避免大响应截断）、JSON 解析和格式化输出。
@@ -196,7 +200,6 @@ python3 "${skill_base_dir}/autoxjs-connector/call.py" '{"cmd":"screenshot","loca
 | command | command, params, wait | 发送原始命令（wait=true 等待结果 / false 即发即走） |
 | run | script, name, wait | 推送执行脚本（默认 wait=false，fire-and-forget） |
 | exec | script, wait | 执行 JS 并返回结果（**始终返回空 result**） |
-| screenshot | local_path（可选） | 截图并保存到本地。local_path 指定 PC 保存目录 |
 | dump | - | 获取 UI 组件树 |
 | pull_file | path, local_path（可选） | 拉取手机文件。local_path 指定 PC 保存目录 |
 | save_project | project_dir | 推送项目到手机（仅保存，不执行）。需 `project.json` |
