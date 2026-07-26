@@ -374,140 +374,64 @@ waitForActivity("TargetActivity", 5000);
 4. **🏅 找图（最后手段）** — 以上均不行时
    - 裁剪截图中特征区域为模板图，使用 `findImage()` 匹配
 
-#### 截图权限获取：`requestScreenCapture(false)` + 轮询等待
+#### 截图权限获取：`ScreenCapturePermissionUtil`
 
-在脚本执行入口同意申请截图权限，禁止使用 `requestScreenCapture(true)`（阻塞弹窗）。必须使用非阻塞方式并轮询等待权限就绪：
+**源文件**：`${skill_base_dir}/lib/ScreenCapturePermissionUtil.js`
 
+| 方法 | 说明 |
+|------|------|
+| `requestScreenPermission()` | 申请截图权限（非阻塞弹窗），轮询等待就绪，成功返回 true |
+
+**模块化使用**（通过 SingletonRequirer）：
 ```javascript
-// 申请截图权限（非阻塞弹窗），然后等待权限真正就绪
-requestScreenCapture(false);
-var screenWait = 0;
-while (screenWait < 30) {
-  var testImg = captureScreen();
-  if (testImg) {
-    testImg.recycle();
-    break;
-  }
-  sleep(1000);
-  screenWait++;
-  log("[启动] 等待截图权限... (%d/30)", screenWait);
-}
-if (screenWait >= 30) {
-  log("❌ 截图授权超时或失败");
-  exit();
-}
-log("[启动] ✓ 截图权限已就绪");
+let singletonRequire = require('./lib/SingletonRequirer.js')(runtime, this)
+let captureUtil = singletonRequire('ScreenCapturePermissionUtil')
+if (!captureUtil.requestScreenPermission()) exit();
 ```
 
-#### Shizuku 管理：绑定 + 无障碍服务
+**非模块化**：直接复制函数到脚本中即可使用。
 
-Shizuku 提供系统级 shell 权限，用于截屏（`screencap`）和启用无障碍服务等操作。使用前需确保 Shizuku App 已在手机运行。
+#### Shizuku 管理：`ShizukuUtils`
 
-**Shizuku 绑定**（脚本入口调用一次）：
+**源文件**：`${skill_base_dir}/lib/ShizukuUtils.js`
+
+| 方法 | 说明 |
+|------|------|
+| `ensureShizuku()` | 绑定 Shizuku 服务（自动处理过期引用），成功返回 true |
+| `enableAccessibility()` | 通过 Shizuku 启用无障碍服务，成功返回 true |
+
+**模块化使用**（通过 SingletonRequirer）：
 ```javascript
-function ensureShizuku() {
-  var proto = Object.getPrototypeOf($shizuku);
-  if (proto.isRunning()) {
-    // 检查 userService 是否过期（Binder 断开后引用可能残留）
-    if (!proto.isShizukuRunning()) {
-      var clazz = proto.getClass();
-      var field = clazz.getDeclaredField("userService");
-      field.setAccessible(true);
-      field.set(proto, null);
-    } else {
-      return true;
-    }
-  }
-
-  // 请求权限绑定
-  proto.requestPermission();
-  sleep(2000);
-
-  // 已授权时 requestPermission 不会重新触发回调，用反射直接绑定
-  if (!proto.isRunning()) {
-    var clazz = proto.getClass();
-    var bindMethod = clazz.getDeclaredMethod("bindUserService");
-    bindMethod.setAccessible(true);
-    bindMethod.invoke(proto);
-    sleep(3000);
-  }
-
-  if (!proto.isRunning()) {
-    log("❌ Shizuku 绑定失败，请检查 Shizuku 是否运行");
-    return false;
-  }
-  log("✓ Shizuku 已绑定");
-  return true;
-}
+let singletonRequire = require('./lib/SingletonRequirer.js')(runtime, this)
+let shizukuUtil = singletonRequire('ShizukuUtils')
+if (!shizukuUtil.ensureShizuku()) exit();
+shizukuUtil.enableAccessibility();
 ```
 
-**启用无障碍服务**（通过 Shizuku `settings` 命令）：
+**非模块化**：直接复制函数到脚本中即可使用。
+
+#### 点击操作：`HumanClick`
+
+**源文件**：`${skill_base_dir}/lib/HumanClick.js`
+
+| 方法 | 说明 |
+|------|------|
+| `humanClickRect(region)` | 在区域内模拟人为点击（随机偏移 + 滑入手势） |
+| `randRange(min, max)` | 辅助函数：随机整数 [min, max] |
+| `randInt(max)` | 辅助函数：随机整数 [0, max) |
+
+`region` 格式：`{ left, top, right, bottom }`，来自 OCR 识别结果或组件 `bounds()`。
+
+**所有点击操作禁止直接调用组件的 `.click()` 方法**，必须使用 `humanClickRect()`。
+
+**模块化使用**（通过 SingletonRequirer）：
 ```javascript
-function enableAccessibility() {
-  var svc = context.getPackageName() + "/com.jy.recorder.AccessibilityService";
-  // 或直接指定：var svc = "com.jy.recorder.modify/com.jy.recorder.AccessibilityService";
-
-  var r1 = $shizuku("settings put secure enabled_accessibility_services " + svc);
-  if (r1.code !== 0) {
-    log("❌ 设置无障碍服务失败: " + r1.error);
-    return false;
-  }
-
-  var r2 = $shizuku("settings put secure accessibility_enabled 1");
-  if (r2.code !== 0) {
-    log("❌ 启用无障碍失败: " + r2.error);
-    return false;
-  }
-
-  log("✓ 无障碍服务已启用");
-  return true;
-}
+let singletonRequire = require('./lib/SingletonRequirer.js')(runtime, this)
+let { humanClickRect } = singletonRequire('HumanClick')
+humanClickRect(region)
 ```
 
-脚本入口示例：
-```javascript
-// 初始化
-if (!ensureShizuku()) exit();
-enableAccessibility();
-
-// 后续使用 $shizuku("screencap -p ...") 截图
-// 后续使用无障碍服务操作
-```
-
-#### 点击操作：`humanClickRect()` 坐标点击封装
-
-所有点击操作**禁止直接调用组件的 `.click()` 方法**，必须使用坐标点击函数 `humanClickRect()`，模拟人为操作：
-
-```javascript
-function humanClickRect(region) {
-  // 在区域内随机偏移（避免每次点击位置固定，被检测为自动化）
-  var marginX = Math.round((region.right - region.left) * 0.22);
-  var marginY = Math.round((region.bottom - region.top) * 0.22);
-  var x = region.left + marginX + randInt(region.right - region.left - 2 * marginX);
-  var y = region.top + marginY + randInt(region.bottom - region.top - 2 * marginY);
-
-  // 模拟手指从附近滑入（而非直接出现在目标点上）
-  var approachX = x + randRange(-8, 8);
-  var approachY = y + randRange(-8, 8);
-  var pressDuration = 60 + randInt(40);
-
-  gesture(pressDuration + randInt(30),
-    [approachX, approachY, 10],
-    [x, y, pressDuration]);
-
-  log("[点击] (%d,%d) 区域 [%d,%d-%d,%d]", x, y, region.left, region.top, region.right, region.bottom);
-}
-```
-
-`region` 为包含 `left, top, right, bottom` 坐标的对象，来自 OCR 识别结果或组件 `bounds()`。
-
-依赖的辅助函数：
-```javascript
-// 随机整数 [min, max]
-function randRange(min, max) { return min + Math.floor(Math.random() * (max - min + 1)); }
-// 随机整数 [0, max)
-function randInt(max) { return Math.floor(Math.random() * max); }
-```
+**非模块化**：直接复制函数到脚本中即可使用。
 
 
 #### 提示与避坑
