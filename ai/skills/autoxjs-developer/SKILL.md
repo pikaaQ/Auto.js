@@ -327,6 +327,81 @@ if (screenWait >= 30) {
 log("[启动] ✓ 截图权限已就绪");
 ```
 
+#### Shizuku 管理：绑定 + 无障碍服务
+
+Shizuku 提供系统级 shell 权限，用于截屏（`screencap`）和启用无障碍服务等操作。使用前需确保 Shizuku App 已在手机运行。
+
+**Shizuku 绑定**（脚本入口调用一次）：
+```javascript
+function ensureShizuku() {
+  var proto = Object.getPrototypeOf($shizuku);
+  if (proto.isRunning()) {
+    // 检查 userService 是否过期（Binder 断开后引用可能残留）
+    if (!proto.isShizukuRunning()) {
+      var clazz = proto.getClass();
+      var field = clazz.getDeclaredField("userService");
+      field.setAccessible(true);
+      field.set(proto, null);
+    } else {
+      return true;
+    }
+  }
+
+  // 请求权限绑定
+  proto.requestPermission();
+  sleep(2000);
+
+  // 已授权时 requestPermission 不会重新触发回调，用反射直接绑定
+  if (!proto.isRunning()) {
+    var clazz = proto.getClass();
+    var bindMethod = clazz.getDeclaredMethod("bindUserService");
+    bindMethod.setAccessible(true);
+    bindMethod.invoke(proto);
+    sleep(3000);
+  }
+
+  if (!proto.isRunning()) {
+    log("❌ Shizuku 绑定失败，请检查 Shizuku 是否运行");
+    return false;
+  }
+  log("✓ Shizuku 已绑定");
+  return true;
+}
+```
+
+**启用无障碍服务**（通过 Shizuku `settings` 命令）：
+```javascript
+function enableAccessibility() {
+  var svc = context.getPackageName() + "/com.jy.recorder.AccessibilityService";
+  // 或直接指定：var svc = "com.jy.recorder.modify/com.jy.recorder.AccessibilityService";
+
+  var r1 = $shizuku("settings put secure enabled_accessibility_services " + svc);
+  if (r1.code !== 0) {
+    log("❌ 设置无障碍服务失败: " + r1.error);
+    return false;
+  }
+
+  var r2 = $shizuku("settings put secure accessibility_enabled 1");
+  if (r2.code !== 0) {
+    log("❌ 启用无障碍失败: " + r2.error);
+    return false;
+  }
+
+  log("✓ 无障碍服务已启用");
+  return true;
+}
+```
+
+脚本入口示例：
+```javascript
+// 初始化
+if (!ensureShizuku()) exit();
+enableAccessibility();
+
+// 后续使用 $shizuku("screencap -p ...") 截图
+// 后续使用无障碍服务操作
+```
+
 #### 点击操作：`humanClickRect()` 坐标点击封装
 
 所有点击操作**禁止直接调用组件的 `.click()` 方法**，必须使用坐标点击函数 `humanClickRect()`，模拟人为操作：
