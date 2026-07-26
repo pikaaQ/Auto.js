@@ -73,41 +73,30 @@ my-script-project/                ← 项目根目录（git / opencode / 辅助�
 
 ## lib 模块
 
-AutoScriptBase 框架在 `lib/` 下提供了一系列核心工具模块，开发时必须遵循框架约定使用。
+> 以下模块的源文件位于 `${skill_base_dir}/lib/`，开发新项目时可直接复制到项目 `lib/` 目录下。
 
 ### SingletonRequirer — 模块引用机制（必读） <a id="singleton-requirer"></a>
 
-**⚠️ 这是框架最核心的约定之一，违反会导致严重 bug。**
+**源文件**：`${skill_base_dir}/lib/SingletonRequirer.js`（依赖 `${skill_base_dir}/lib/PrintExceptionStack.js`）
+
+**⚠️ 当项目代码拆分多个模块时，必须使用 SingletonRequirer，禁止直接 `require`。**
 
 AutoJS 的 `require()` **没有模块缓存**——每次调用 `require('./foo.js')` 都会重新执行整个文件，返回全新的实例。这与 Node.js 的 `require()` 行为完全不同。
 
-因此，框架通过 `SingletonRequirer` 在 `global` 对象上模拟了模块缓存层，确保所有模块共享同一个实例。
+SingletonRequirer 在 `global` 对象上模拟了模块缓存层，确保所有模块共享同一个实例。
 
 **❌ 禁止写法：**
-
 ```javascript
-// 错误：直接 require，每次都创建新实例
-let logUtils = require('./lib/prototype/LogUtils.js')
-let commonFunctions = require('./lib/prototype/CommonFunction.js')
+let myModule = require('./lib/MyModule.js')
+let anotherModule = require('./lib/AnotherModule.js')
 ```
 
 **✅ 正确写法：**
-
 ```javascript
-// 正确：通过 SingletonRequirer 获取单例
 let singletonRequire = require('./lib/SingletonRequirer.js')(runtime, this)
-let logUtils = singletonRequire('LogUtils')
-let commonFunctions = singletonRequire('CommonFunction')
+let myModule = singletonRequire('MyModule')
+let anotherModule = singletonRequire('AnotherModule')
 ```
-
-**模块搜索顺序**（`singletonRequire('ModuleName')` 调用时）：
-
-| 优先级 | 路径 | 说明 |
-|--------|------|------|
-| 1 | `lib/prototype/{ModuleName}.js` | 核心工具模块（26 个） |
-| 2 | `lib/prototype/{ModuleName}` | 无扩展名兜底 |
-| 3 | `lib/{ModuleName}.js` | 通用工具库 |
-| 4 | `lib/{ModuleName}` | 无扩展名兜底 |
 
 **特性**：
 
@@ -118,20 +107,17 @@ let commonFunctions = singletonRequire('CommonFunction')
 | 循环依赖解耦 | 延迟加载自动断开循环依赖链 |
 | 使用追踪 | 内置 `useCount` 统计，可通过 `singletonRequire('ModuleName', true)` 打印 |
 
-**典型使用模式**（在 `lib/prototype/` 模块内部）：
-
+**模块内部引用其他模块**：
 ```javascript
-// 1. 获取 singletonRequire
-let singletonRequire = require('../SingletonRequirer.js')(runtime, global)
+// 在 lib/MyModule.js 内部
+let singletonRequire = require('./SingletonRequirer.js')(runtime, global)
+let OtherModule = singletonRequire('OtherModule')
 
-// 2. 引用其他模块（而非直接 require）
-let FileUtils = singletonRequire('FileUtils')
-let LogUtils = singletonRequire('LogUtils')
-
-// 3. 定义自己的功能
-function MyModule() { ... }
-
-// 4. 导出
+function MyModule() {
+  this.doSomething = function () {
+    OtherModule.helper()
+  }
+}
 module.exports = new MyModule()
 ```
 
@@ -139,14 +125,9 @@ module.exports = new MyModule()
 
 | 问题 | 后果 |
 |------|------|
-| 多实例 | 状态不共享，任务队列、日志缓冲等全局状态分裂 |
-| 重复初始化 | 线程池、文件目录等被重复创建，浪费内存 |
+| 多实例 | 状态不共享，全局状态分裂 |
+| 重复初始化 | 模块被重复创建，浪费内存 |
 | 循环依赖 | 模块 A require B，B require A → 死锁或拿到 undefined |
-
-**例外**：以下情况可以直接 `require`：
-- 纯函数/工具类库（无内部状态），如 `lib/DateUtil.js`
-- 第三方库 / 垫片模块，如 `modules/` 下的兼容层
-- 非 `lib/prototype/` 和 `lib/` 下的模块，如 `core/`、`extends/` 下的业务代码
 
 
 ## 基础指令
@@ -324,21 +305,17 @@ img.recycle();
 
 #### 模块引用：必须使用 SingletonRequirer，禁止直接 require
 
-**这是框架最核心的约定。** AutoJS 的 `require()` 没有模块缓存，直接 `require` 会导致多实例、状态分裂、循环依赖等问题（详见 [lib 模块 → SingletonRequirer](#singleton-requirer)）。
-
-**规则**：引用 `lib/prototype/` 或 `lib/` 下的框架模块时，**禁止直接 `require`**，必须通过 `SingletonRequirer`：
+AutoJS 的 `require()` 没有模块缓存，直接 `require` 会导致多实例、状态分裂、循环依赖等问题（详见 [lib 模块 → SingletonRequirer](#singleton-requirer)）。
 
 ```javascript
 // ❌ 错误
-let logUtils = require('./lib/prototype/LogUtils.js')
+let myModule = require('./lib/MyModule.js')
 
 // ✅ 正确
 let singletonRequire = require('./lib/SingletonRequirer.js')(runtime, this)
-let logUtils = singletonRequire('LogUtils')
-let { logInfo, errorInfo } = singletonRequire('LogUtils')  // 支持解构
+let myModule = singletonRequire('MyModule')
+let { someFunc } = singletonRequire('MyModule')  // 支持解构
 ```
-
-**例外**：纯函数工具库（无内部状态）、`modules/` 垫片、`core/`/`extends/` 业务代码可以直接 `require`。
 
 #### 对流程的单个步骤，需要采取 检查 → 执行 → 验证 的执行三步方案闭环：
 
