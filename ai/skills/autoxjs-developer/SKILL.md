@@ -5,23 +5,18 @@ description: "AutoX.js 脚本开发助手。侧重脚本编写、推送、调试
 
 # AutoX.js 脚本开发
 
-依赖 `autoxjs-connector` 技能提供的手机连接能力。在执行开发操作前，确保手机已连接（通过 `autoxjs-connector` 的连接流程）。
+依赖 `autoxjs-connector` 技能提供的手机连接能力。
 
-> ⚠️ 在和手机交互时仅能使用 `autoxjs-connector` 技能提供的手机连接能力，禁止使用adb、新建http服务等方案，如果`autoxjs-connector` 技能中的能力失败，应该告知用户，不要自作主张使用其他方案。
+⚠️ **在和手机交互时仅能使用 `autoxjs-connector` 技能提供的手机连接能力，禁止使用adb、新建http服务等方案，如果`autoxjs-connector` 技能中的能力失败，应该告知用户，不要自作主张使用其他方案。**
+⚠️ **严格遵守开发和探索中的方案和准则，不要自作主张采用其他方案**
 
 ## 安装
 
 ### 前置依赖
 
-```bash
-pip install websockets
-```
+本技能依赖 `autoxjs-connector` 技能提供手机连接能力，**必须先安装 `autoxjs-connector`**（安装方法见其文档）。
 
-本技能依赖 `autoxjs-connector` 技能提供手机连接能力，**必须先安装 `autoxjs-connector`**（安装方法见其文档）。不要通过本技能安装 `autoxjs-connector`，也不要调用 `autoxjs-connector/install.sh`。
-
-### 全局安装（推荐）
-
-技能默认只在当前项目加载。全局安装后可在所有 opencode 项目中使用：
+### 安装
 
 ```bash
 # 方法一：使用安装脚本（符号链接，与项目源码保持同步）
@@ -31,8 +26,6 @@ bash ${skill_base_dir}/autoxjs-developer/install.sh
 mkdir -p ~/.config/opencode/skills
 cp -r ${skill_base_dir}/autoxjs-developer ~/.config/opencode/skills/
 ```
-
-⚠️ 本技能不包含连接能力，**必须单独安装 `autoxjs-connector` 技能**。
 
 安装后**重启 opencode** 使技能生效。
 
@@ -54,6 +47,7 @@ my-script-project/                ← 项目根目录（git / opencode / 辅助�
 ├── phone_data/                   ← 从手机拉取的文件（日志、截图等），不同步到手机
 ├── .omo/                         ← opencode 配置
 ├── .git/                         ← 版本控制
+├── README.md                     ← 项目说明
 └── ...                           ← 编译临时文件等辅助路径
 ```
 
@@ -77,41 +71,30 @@ my-script-project/                ← 项目根目录（git / opencode / 辅助�
 | `调用Java API/` | Java 接口调用 |
 | 其余 | 协程、多线程、传感器、定时器、悬浮窗等 |
 
-## 脚本根目录探测与缓存（首次开发前执行）
+
+## 基础指令
+### 脚本根目录探测与缓存（首次开发前执行）
 
 开发过程中的日志拉取、脚本保存等操作需要知道手机上的脚本根目录。此路径**不是固定的**，取决于 App 语言（中文 `/脚本/`、英文 `/Scripts/`）和用户自定义设置。
 
 > ⚡ **`dir_path` 缓存在 Agent 的当前 session 记忆中。** 首次探测后记下来，后续所有操作直接使用，不许每次都探测。
 
-### 探测方法
+#### 探测方法
 
-```python
-import json, socket, time
-
-def ctrl(cmd_data, timeout=15):
-    s = socket.socket(); s.settimeout(timeout)
-    s.connect(("127.0.0.1", 19317))
-    s.sendall((json.dumps(cmd_data) + "\n").encode())
-    time.sleep(0.5)
-    resp = s.recv(65535)
-    s.close()
-    return json.loads(resp.decode())
+```bash
+CALL="python3 ${skill_base_dir}/autoxjs-connector/call.py"
 
 # Step A: 推送探测脚本（fire-and-forget）
 # run 执行时 working directory = Pref.getScriptDirPath()
 # 因此 files.cwd() 就是实际脚本目录
-ctrl({"cmd": "run", "script": 'files.write("/sdcard/.sdir.txt", files.cwd());',
-      "name": ".detect_sdir.js", "wait": False})
-time.sleep(1.5)
+$CALL '{"cmd":"run","script":"files.write(\"/sdcard/.sdir.txt\", files.cwd());","name":".detect_sdir.js","wait":false}' --port 9317
+sleep 1.5
 
-# Step B: 拉取探测结果
-result = ctrl({"cmd": "pull_file", "path": "/sdcard/.sdir.txt"})
-dir_path = "/storage/emulated/0/脚本"           # 中文默认兜底
-if result.get("success"):
-    with open(result["result"]["local_path"]) as f:
-        dir_path = f.read().strip()
-
-print(f"脚本根目录: {dir_path}")                # 记下来，后续复用
+# Step B: 拉取探测结果，提取 local_path 并读取文件内容
+$CALL '{"cmd":"pull_file","path":"/sdcard/.sdir.txt"}' --port 9317 > /tmp/pull_result.json
+LOCAL_FILE=$(python3 -c "import json; print(json.load(open('/tmp/pull_result.json'))['result']['local_path'])")
+dir_path=$(cat "$LOCAL_FILE" 2>/dev/null || echo "/storage/emulated/0/脚本")
+echo "脚本根目录: $dir_path"   # 记下来，后续复用
 ```
 
 日志文件路径格式：`{dir_path}/.logs/autojs-log4j[-debug].txt`
@@ -119,53 +102,37 @@ print(f"脚本根目录: {dir_path}")                # 记下来，后续复用
 - debug 构建 → `autojs-log4j-debug.txt`
 - release 构建 → `autojs-log4j.txt`
 
-## 推送脚本到手机
+### 推送脚本到手机
 
-### 推送并自动执行（不会保存到手机）
+#### 推送并自动执行（不会保存到手机）
 
-```python
-import json, socket, time
-
-s = socket.socket(); s.settimeout(10)
-s.connect(("127.0.0.1", 19317))
-s.sendall((json.dumps({"cmd": "run", "name": "my_script.js",
-    "script": open("本地脚本.js", encoding="utf-8").read(),
-    "wait": False}) + "\n").encode())
-time.sleep(0.5); print(s.recv(65535).decode()); s.close()
+```bash
+CALL="python3 ${skill_base_dir}/autoxjs-connector/call.py"
+SCRIPT=$(cat 本地脚本.js)
+$CALL "{\"cmd\":\"run\",\"name\":\"my_script.js\",\"script\":$(python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))" <<< "$SCRIPT"),\"wait\":false}" --port 9317
 # 脚本已在手机后台执行
-time.sleep(3)  # 等日志写入
+sleep 3  # 等日志写入
 ```
 
-### 推送并保存到手机
+#### 推送并保存到手机
 
-```python
-import json, socket, time
-
-payload = json.dumps({"cmd": "command", "command": "save",
-    "params": {"name": "手机端名称.js", "script": open("本地脚本.js", encoding="utf-8").read()},
-    "wait": False})
-s = socket.socket(); s.settimeout(15)
-s.connect(("127.0.0.1", 19317))
-s.sendall((payload + "\n").encode())
-time.sleep(1.5)
-print(s.recv(65535).decode()); s.close()
+```bash
+CALL="python3 ${skill_base_dir}/autoxjs-connector/call.py"
+SCRIPT=$(cat 本地脚本.js)
+$CALL "{\"cmd\":\"command\",\"command\":\"save\",\"params\":{\"name\":\"手机端名称.js\",\"script\":$(python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))" <<< "$SCRIPT")},\"wait\":false}" --port 9317
 ```
 
-### 远程启动已保存的脚本
+#### 远程启动已保存的脚本
 
-```python
-import json, socket, time
-
-s = socket.socket(); s.settimeout(10)
-s.connect(("127.0.0.1", 19317))
-s.sendall((json.dumps({"cmd": "run", "name": "已保存的脚本.js", "wait": False}) + "\n").encode())
-time.sleep(0.5); print(s.recv(65535).decode()); s.close()
-time.sleep(3)  # 等日志写入
+```bash
+CALL="python3 ${skill_base_dir}/autoxjs-connector/call.py"
+$CALL '{"cmd":"run","name":"已保存的脚本.js","wait":false}' --port 9317
+sleep 3  # 等日志写入
 ```
 
 > ⚠️ **`run` 命令不回 `command_result`**，`wait=true` 会超时。必须用 `wait=false` + sleep。
 
-### 推送项目到手机
+#### 推送项目到手机
 
 使用 `save_project`（仅保存）或 `run_project`（保存并执行）推送整个项目目录到手机。
 
@@ -183,42 +150,92 @@ time.sleep(3)  # 等日志写入
 > ```
 > 缺少这些字段会导致 `ProjectLauncher` 抛出"无效项目"异常。
 
-```python
-import json, socket, time
-
-payload = json.dumps({"cmd": "save_project", "project_dir": "/path/to/your/project"})
-s = socket.socket(); s.settimeout(30)
-s.connect(("127.0.0.1", 19317))
-s.sendall((payload + "\n").encode())
-time.sleep(5)
-resp = s.recv(65535)
-print(resp.decode()[:500])
-s.close()
+```bash
+CALL="python3 ${skill_base_dir}/autoxjs-connector/call.py"
+$CALL "{\"cmd\":\"save_project\",\"project_dir\":\"/path/to/your/project\"}" --port 9317
 ```
 
-如需保存并自动执行，将 `save_project` 改为 `run_project` 即可。
+#### 执行项目（不保存到本地）
+与`save_project`方案一致，将 `save_project` 改为 `run_project` 即可。
 
-## 拉取日志
+#### 拉取日志
 
 日志文件路径格式：`{dir_path}/.logs/autojs-log4j[-debug].txt`
 
 ```bash
 # {dir_path} 来自脚本根目录探测（已缓存）
 # 优先尝试 release 版本，若不存在则尝试 debug 版本
-python3 "${skill_base_dir}/autoxjs-connector/server.py" --send '{"cmd":"pull_file","path":"{dir_path}/.logs/autojs-log4j.txt"}' --port 9317
+# local_path 指定当前项目的 phone_data/ 目录，确保文件保存到正确的项目
+CALL="python3 ${skill_base_dir}/autoxjs-connector/call.py"
+$CALL "{\"cmd\":\"pull_file\",\"path\":\"{dir_path}/.logs/autojs-log4j.txt\",\"local_path\":\"{project_root}/phone_data\"}" --port 9317
 ```
 
-## 开发工作要求
+## 开发方法与要求
 
-### 流程要求：检查 → 执行 → 验证
+### 开发流程：规划 → 探索 → 单元开发 → 单元验证 → 完成脚本 → 用户测试
 
-对于需求中的每一步操作，代码必须实现 **检查 → 执行 → 验证** 闭环：
+1. 先根据用户描述，规划脚本流程, 并和用户确认，看用户有没有补充，直至流程清晰并得到用户确认，保留流程文档，后续根据文档来进行开发。
+2. 开始探索流程中出现的每个页面，探索方式见 探索与验证方法 章节。对探索的每个页面进行组件分析得到充分认知，判断组件操作后的结果，并将页面组件记录到组件文档。完成当前页面后，自动用脚本操作进入下一个页面，循环操作直到记录所有页面。
+3. 根据流程和页面的研究结果，依次开发流程中每个步骤的脚本，开发完成后验证单个步骤是否复合要求，验证方式见 探索与验证方法 章节。
+4. 将所有步骤根据流程进行组合，完成脚本编写，提示用户测试验证。
 
-- **检查**：判断当前状态，确认是否需要执行操作
+### 探索与验证方法
+
+当需要探索页面和验证操作时，使用test目录的项目来进行。先在test目录项目中编辑好脚本，然后推送执行，最后拉取执行日志来分析，达成探索和验证的目的。
+
+#### 如何探索
+
+探索页面时，test项目脚本逻辑为：
+1. 进入页面
+2. **截图 + mlkocr**：
+   与正式脚本中使用 `captureScreen()` 截图不同，探索/验证时脚本中**使用 `images.screenshotByApp(path)` 截图**（AutoX.js 内置函数，无需申请截图权限，参数 path 为截图保存路径），固定为当前test项目在手机中的目录下的pic目录。然后读取截图后用 `mlkocr` 识别文字，识别结果写入log。
+   **如果`images.screenshotByApp(path)`截图失败，提示用户开启权限，而不是自作主张采用其他方法**
+
+示例：
+```javascript
+var path = files.cwd() + '/pic/diag.png';
+log('截图保存路径: ' + path);
+var result = images.screenshotByApp(path);
+if (!result) {
+  log('截图失败');
+  exit();
+}
+
+// 读取截图并用 mlkocr 识别文字
+var img = images.read(path);
+var raw = $mlKitOcr.detect(img);
+log('OCR 结果数量: %d', raw ? raw.length : 0);
+for (var i = 0; i < (raw ? raw.length : 0); i++) {
+  log('OCR[%d]: label=%s bounds=[%d,%d,%d,%d]',
+    i, raw[i].label,
+    raw[i].bounds.left, raw[i].bounds.top,
+    raw[i].bounds.right, raw[i].bounds.bottom);
+}
+img.recycle();
+```
+3. **Dump 组件树**：获取当前界面 UI 组件树 XML，分析组件的 className、desc、text、bounds、clickable 等属性
+
+待脚本执行完成后，结合 OCR 结果和组件树信息，分析当前页面，并记录页面文档。**如果上述方式分析出的信息无法达成流程要求，可以在申请用户同意后，将截图拉取到项目中，使用look_at分析图片，这种操作必须申请用户同意后才可实施。**
+
+#### 如何验证
+验证操作时，test项目脚本逻辑为：
+1. 进入操作的前置页面
+2. 执行单元操作
+3. 截图 + mlkocr + dump组件树（方案同探索中的2、3），判断操作后的页面和页面组件是否和预期一致。
+
+
+### 开发要求与约定：
+最终在手机上运行的代码在子目录my-script-project/中，对于这些代码，在开发时有如下要求：
+
+#### 整体流程，需要模块清晰，与流程文档一致，尽量将一组相关的操作封装为一个函数
+
+#### 对流程的单个步骤，需要采取 检查 → 执行 → 验证 的执行三步方案闭环：
+
+- **检查**：判断当前所在页面是否符合流程要求，确认是否需要执行操作
 - **执行**：执行具体操作
-- **验证**：确认操作生效
+- **验证**：确认操作生效，跳转到了复合流程的页面/达成了效果
 
-对于连续操作，上一步的验证和下一步的检查可以合并（用下一步的可执行条件当作上一步的完成条件）。
+对于连续操作，上一步的验证和下一步的检查可以合并（上一步的完成条件和下一步的检查条件一致时不做重复检查）。
 
 代码中使用注释体现每一步操作的流程结构：
 
@@ -240,264 +257,122 @@ if (ad) {
     ad.click();
     // [验证] 菜单已出现（= 下一步的检查，合并到 Step 3）
 }
+// [验证] 菜单是否出现
+let menu = desc("目标菜单").findOne(3000);
 
 // === Step 3: 点击菜单项 ===
 // [检查] 菜单是否出现（与上一步验证合并，无需重复）
-let menu = desc("目标菜单").findOne(3000);
 // [执行] 点击菜单
 menu.click();
 // [验证] 已到达目标页面
 waitForActivity("TargetActivity", 5000);
 ```
 
-### 探索与验证方法
+#### 操作定位方案
 
-当需要编写操作脚本时，先用以下固定手段**探索**页面结构：
-
-1. **截图 + mlkocr**：
-   - **探索/验证/诊断阶段**：使用 connector 的 `screenshot` 命令截图（避免在临时诊断脚本中使用 `snapshot()` 反复申请权限），将截图保存到本地后用 `mlkocr` 识别文字；如需在手机端 OCR，则通过 `run_project` 将截图作为诊断项目的一部分推送到手机执行（详见「截图-诊断项目推送」）
-   - **正式脚本**：直接在脚本中使用 `snapshot()` 截图（运行一次授权即可，属于正常使用场景）
-2. **Dump 组件树**：获取当前界面 UI 组件树 XML，分析组件的 className、desc、text、bounds、clickable 等属性
-
-结合 OCR 结果和组件树信息判断如何执行操作。
-
-然后用**临时诊断脚本**发送到手机上调试定位。诊断完成后，必须清理临时脚本（详见诊断工作流 Step 6）。
-
-> 如果截图 OCR + dump 无法获取到必要信息，**必须请示用户**是否可以拉取截图使用 `look_at` 工具进行分析，不得擅自猜测。
-
-### 操作定位方案优先级
-
-按以下优先级选择操作定位方式：
+代码中，如果需要定位目标元素，需按以下优先级选择操作定位方式，这些方式在探索页面时就要考虑：
 
 1. **🥇 组件查找（首选）** — `desc()` / `text()` / `className()` / `id()` 等选择器
    - 优点：稳定、不受屏幕分辨率影响
    - 使用：`desc("按钮").findOne(3000)`、`textContains("确认").click()`
 2. **🥈 OCR 文字识别（mlkocr）** — 当组件无 desc/text 属性时使用
    - 使用：截图 → 裁剪 → mlkocr 识别文字坐标 → 点击坐标
-   - **正式脚本**中使用 `snapshot()` 截图（正常权限申请，运行一次授权即可）
-   - **探索/验证/诊断阶段**避免在临时脚本中使用 `snapshot()`（反复申请权限影响效率），改用 connector 的 `screenshot` 命令截图后通过 `run_project` 推送诊断项目到手机进行 OCR（详见「截图-诊断项目推送」）
-   - 如果 mlkocr 识别结果不理想，使用**模糊匹配**：
-     - **目标文字量多**（≥3个字）：匹配文字量达到目标文字的 60% 以上即通过
+   - **正式脚本**中使用 `captureScreen()` 截图
+   - 因为 mlkocr 识别结果不理想，使用**模糊匹配**，每个组件的模糊匹配可以单独封装成一个函数：
+     - **目标文字量多**（≥3个字）：匹配词组量达到目标词组的 60% 以上即通过
      - **目标文字量少**（<3个字）：所有文字相似的结果都纳入匹配，只要命中其中一个即通过
 3. **🥉 找色** — 当 OCR 也无法获取有效信息时使用
    - 从截图中取特征颜色点，使用 `findColor()` / `findColorEquals()` 定位
 4. **🏅 找图（最后手段）** — 以上均不行时
    - 裁剪截图中特征区域为模板图，使用 `findImage()` 匹配
 
-## 诊断工作流（手机端调试流程）
+#### 截图权限获取：`requestScreenCapture(false)` + 轮询等待
 
-当需要排查手机端问题时（如组件查找失败、OCR 不识别、流程卡住），按以下闭环执行：
+在脚本执行入口同意申请截图权限，禁止使用 `requestScreenCapture(true)`（阻塞弹窗）。必须使用非阻塞方式并轮询等待权限就绪：
 
+```javascript
+// 申请截图权限（非阻塞弹窗），然后等待权限真正就绪
+requestScreenCapture(false);
+var screenWait = 0;
+while (screenWait < 30) {
+  var testImg = captureScreen();
+  if (testImg) {
+    testImg.recycle();
+    break;
+  }
+  sleep(1000);
+  screenWait++;
+  log("[启动] 等待截图权限... (%d/30)", screenWait);
+}
+if (screenWait >= 30) {
+  log("❌ 截图授权超时或失败");
+  exit();
+}
+log("[启动] ✓ 截图权限已就绪");
 ```
-推送含详细日志的诊断脚本 → 拉取日志 → 分析日志 → 修复代码 → 推送修复
+
+#### 点击操作：`humanClickRect()` 坐标点击封装
+
+所有点击操作**禁止直接调用组件的 `.click()` 方法**，必须使用坐标点击函数 `humanClickRect()`，模拟人为操作：
+
+```javascript
+function humanClickRect(region) {
+  // 在区域内随机偏移（避免每次点击位置固定，被检测为自动化）
+  var marginX = Math.round((region.right - region.left) * 0.22);
+  var marginY = Math.round((region.bottom - region.top) * 0.22);
+  var x = region.left + marginX + randInt(region.right - region.left - 2 * marginX);
+  var y = region.top + marginY + randInt(region.bottom - region.top - 2 * marginY);
+
+  // 模拟手指从附近滑入（而非直接出现在目标点上）
+  var approachX = x + randRange(-8, 8);
+  var approachY = y + randRange(-8, 8);
+  var pressDuration = 60 + randInt(40);
+
+  gesture(pressDuration + randInt(30),
+    [approachX, approachY, 10],
+    [x, y, pressDuration]);
+
+  log("[点击] (%d,%d) 区域 [%d,%d-%d,%d]", x, y, region.left, region.top, region.right, region.bottom);
+}
 ```
 
-**AI 应自主完成整个闭环，无需用户介入手机操作。**
+`region` 为包含 `left, top, right, bottom` 坐标的对象，来自 OCR 识别结果或组件 `bounds()`。
 
-### Step 1: 编写诊断脚本
+依赖的辅助函数：
+```javascript
+// 随机整数 [min, max]
+function randRange(min, max) { return min + Math.floor(Math.random() * (max - min + 1)); }
+// 随机整数 [0, max)
+function randInt(max) { return Math.floor(Math.random() * max); }
+```
 
-在 `/tmp/{project_name}/` 下创建诊断脚本（`{project_name}` 为当前项目目录名，如 `Auto.js`），包含：
-- 使用 `log()` 输出探测结果（**不要调用 `console.show()`**，控制台窗口遮挡屏幕会导致 OCR 不准）
-- 逐一测试可能的查找方式并打印结果
-- 通过最后一条日志 `=== 完毕 ===` 标记结束
 
-**记录脚本本地路径（如 `/tmp/{project_name}/diagnose_xxx.js`），后续清理用。**
+#### 提示与避坑
 
-关键注意：
+- 探索、验证脚本中应该使用 `log()` 输出探测结果（**不要调用 `console.show()`**，控制台窗口遮挡屏幕会导致 OCR 不准）
+- 探索、验证脚本逐一测试可能的查找方式并打印结果，然后根据优先级在开发时使用
+- 探索、验证脚本通过第一条日志`=== 开始 ===`，最后一条日志 `=== 完毕 ===` 标记开始结束，这样方便每次检查日志时快速定位
 - **`widget.desc()` 和 `widget.text()` 是方法，不是属性** — 必须加括号调用
 - 组件属性如 `bounds()`、`className()`、`clickable()` 也都是方法
 - 调试父组件树时递归调用 `widget.children()` 遍历
-
-### Step 2: 推送并远程执行
-
-```python
-import json, socket, time
-
-s = socket.socket(); s.settimeout(10)
-s.connect(("127.0.0.1", 19317))
-s.sendall((json.dumps({"cmd": "run", "name": "diagnose.js",
-    "script": "console.log(\"=== 诊断开始 ===\");\n// ...诊断代码...\nconsole.log(\"=== 完毕 ===\");",
-    "wait": False}) + "\n").encode())
-time.sleep(0.5); print(s.recv(65535).decode()); s.close()
-# 脚本已在手机后台执行 **不保存到手机**，无需手动清理
-time.sleep(3)  # 等待日志写入
-```
-
-> 如果用 `save` + `run` 两步法推送诊断脚本，记录保存的文件名，后续需清理。
-
-### Step 3: 拉取日志
-
-用缓存的 `dir_path` 构造日志路径：
-
+- 探索、验证脚本模板：
 ```bash
-# 优先 debug 版本，若失败则尝试 release 版本
-python3 "${skill_base_dir}/autoxjs-connector/server.py" --send '{"cmd":"pull_file","path":"{dir_path}/.logs/autojs-log4j-debug.txt"}' --port 9317
+CALL="python3 ${skill_base_dir}/autoxjs-connector/call.py"
+$CALL "{\"cmd\":\"run\",\"name\":\"diagnose.js\",\"script\":\"log('=== 开始 ===');\n// ...诊断代码...\nlog('=== 完毕 ===');\",\"wait\":false}" --port 9317
+# 脚本已在手机后台执行 **不保存到手机**，无需手动清理
+sleep 3  # 等待日志写入
 ```
-
-成功拉取后，日志保存在 `phone_data/` 下。找到诊断脚本标记头（如 `=== 诊断名称 ===`）到最后之间的内容进行分析。
-
-### Step 4: 分析日志
-
-关键检查点：
-- **组件能否被找到** — `findOne()` 返回 null 还是有效对象
-- **组件的 className** — 确认是 `ViewGroup`、`TextView`、`ImageView` 等
-- **desc/text 属性** — 文本在 desc 还是 text 中
-- **clickable 状态** — 不可点击的组件需要 `.click()` 或坐标点击
-- **bounds 坐标** — 确认位置是否符合预期
-- **父组件树结构** — 通过 `widget.parent().children()` 遍历
-
-### Step 5: 修复并推送
-
-根据诊断结果修改主脚本，再次推送远程执行验证。
-
-### Step 6: 清理诊断脚本
-
-诊断流程结束后，必须清理所有临时文件：
-
-1. **PC 端**：删除诊断脚本（如 `/tmp/{project_name}/diagnose_xxx.js`）
-2. **手机端**：如果是用 `save` 保存到手机的，用 `run` 执行删除；如果是用 `run` 直接推送执行的（不保存），无需清理
-
-```python
-import json, socket, time
-
-def ctrl(cmd_data, timeout=15):
-    s = socket.socket(); s.settimeout(timeout)
-    s.connect(("127.0.0.1", 19317))
-    s.sendall((json.dumps(cmd_data) + "\n").encode())
-    time.sleep(0.5)
-    resp = s.recv(65535)
-    s.close()
-    return json.loads(resp.decode())
+- 如果用 `save` + `run` 两步法推送诊断脚本，记录保存的文件名，完成后记得清理。
+- 临时拉取的日志、文件保存在phone_data下，使用后清理，清理脚本模板（包括手机和PC上）：
+```bash
+CALL="python3 ${skill_base_dir}/autoxjs-connector/call.py"
 
 # 清理保存到手机的诊断脚本（如果通过 save 保存过）
-ctrl({"cmd": "run", "script": "files.remove(\"{dir_path}/diagnose.js\");",
-      "name": ".cleanup.js", "wait": False})
-time.sleep(1)
+$CALL "{\"cmd\":\"run\",\"script\":\"files.remove('{dir_path}/diagnose.js');\",\"name\":\".cleanup.js\",\"wait\":false}" --port 9317
+sleep 1
 # 清理探测残留（首次探测时写入的 .sdir.txt）
-ctrl({"cmd": "run", "script": 'files.remove("/sdcard/.sdir.txt");',
-      "name": ".cleanup_sdir.js", "wait": False})
-time.sleep(1)
+$CALL '{"cmd":"run","script":"files.remove(\"/sdcard/.sdir.txt\");","name":".cleanup_sdir.js","wait":false}' --port 9317
+sleep 1
 # 清理手机上的临时清理脚本自身
-ctrl({"cmd": "run", "script": 'files.remove(files.cwd() + "/.cleanup.js");\n' +
-      'files.remove(files.cwd() + "/.cleanup_sdir.js");',
-      "name": ".cleanup_self.js", "wait": False})
+$CALL '{"cmd":"run","script":"files.remove(files.cwd() + \"/.cleanup.js\");\nfiles.remove(files.cwd() + \"/.cleanup_sdir.js\");","name":".cleanup_self.js","wait":false}' --port 9317
 ```
-
-### 截图-诊断项目推送
-
-当手机端 `captureScreen()` / `snapshot()` 每次都需要授权弹窗（如 MIUI），且需要使用手机端 MLKit OCR 进行分析时，使用此方案。
-
-#### 原则
-
-在项目初始化阶段，`_test/` 诊断项目目录即建好，作为项目标配长期存在。每次诊断时复用此项目，仅替换截图和调整脚本，用完不清除。
-
-```
-my-script-project_test/           ← 诊断项目，项目初始化时创建，长期存在
-├── project.json                  ← name: "{project_name}_test", main: "main.js"
-├── main.js                       ← 诊断脚本，每次按需修改
-└── pic/
-    ├── .gitkeep                  ← 占位，确保目录提交到 git
-    └── diag.png                  ← 每次诊断时替换为当前截图
-```
-
-#### 流程
-
-**Step 1: 截图**
-
-使用 connector `screenshot` 命令将当前界面截图拉取到 PC `phone_data/`：
-
-```bash
-python3 "${connector_skill_dir}/server.py" --send '{"cmd":"screenshot"}' --port 9317
-# 截图保存到 phone_data/screenshot_xxx.png
-```
-
-**Step 2: 替换截图 + 编写诊断脚本**
-
-```bash
-cp phone_data/screenshot_xxx.png {project_root}_test/pic/diag.png
-```
-
-编辑 `{project_root}_test/main.js`，按本次诊断目标编写脚本。核心逻辑模板：
-
-> ⚠️ **诊断脚本不要打开 console**：`console.show()` 会在屏幕上叠加控制台窗口，遮挡部分界面内容，导致 OCR 识别结果不准（尤其影响 `adRegion` 右上角裁剪区域）。诊断脚本应直接使用 `log()` 输出，日志会自动写入文件，通过 `pull_file` 拉取查看。
-
-```javascript
-"autojs";
-// 不要调用 console.show() — 遮挡屏幕会导致 OCR 不准
-log("=== 截图OCR诊断开始 ===");
-
-var img = images.read("pic/diag.png");
-if (!img) {
-  log("❌ 无法读取 pic/diag.png");
-  exit();
-}
-
-var raw = $mlKitOcr.detect(img);
-log("OCR 结果数量: %d", raw ? raw.length : 0);
-for (var i = 0; i < (raw ? raw.length : 0); i++) {
-  log("OCR[%d]: label=%s bounds=[%d,%d,%d,%d]",
-    i, raw[i].label,
-    raw[i].bounds.left, raw[i].bounds.top,
-    raw[i].bounds.right, raw[i].bounds.bottom);
-}
-img.recycle();
-
-// 在此处添加针对性的关键词匹配测试
-// ...
-
-log("=== 诊断完毕 ===");
-```
-
-**Step 3: 推送并执行**
-
-使用 `run_project` 将诊断项目推送到手机并自动执行：
-
-```python
-import json, socket, time
-
-s = socket.socket(); s.settimeout(30)
-s.connect(("127.0.0.1", 19317))
-s.sendall((json.dumps({
-  "cmd": "run_project",
-  "project_dir": "/absolute/path/{project_root}_test"
-}) + "\n").encode())
-time.sleep(5)
-print(s.recv(65535).decode()[:500])
-s.close()
-```
-
-手机上项目路径为 `{脚本根目录}/{project_name}_test/`，`files.cwd()` 即此目录。`main.js` 中的 `images.read("pic/diag.png")` 可正常读取。
-
-**Step 4: 拉取日志**
-
-```bash
-python3 "${connector_skill_dir}/server.py" --send '{"cmd":"pull_file","path":"{dir_path}/.logs/autojs-log4j-debug.txt"}' --port 9317
-```
-
-日志保存在 `phone_data/` 下，分析诊断输出。
-
-#### 优点
-
-- **零权限弹窗**：connector `screenshot` 走服务端截图（已授权），诊断脚本无需 `captureScreen()`
-- **项目级复用**：`_test/` 目录永久存在，每次只替换 `pic/diag.png` 和调整 `main.js`
-- **路径确定**：`files.cwd()` 固定指向项目根目录，相对路径可移植
-- **不污染原项目**：诊断代码和截图隔离在 `_test/` 下
-- **git 友好**：`.gitkeep` 占位保留目录结构，`pic/` 下的截图通过 `.gitignore` 排除
-
-#### 注意事项
-
-- `project.json` 必须包含 name/packageName/versionName/versionCode/main 五个字段
-- 确保 `pic/` 下只有诊断所需的图片，避免无关文件随项目推送
-- 每次诊断前先替换 `pic/diag.png`，防止使用旧截图
-- 不需要清理手机端项目目录 — 下次诊断直接覆盖推送即可
-
-## 常见开发问题
-
-| 问题 | 原因 | 解决 |
-|------|------|------|
-| `widget.desc` 返回函数引用 | desc 是方法不是属性 | 用 `widget.desc()` |
-| `findOne(2000)` 返回 null | 超时太短或选择器不匹配 | 确认 desc/text 是否存在，增大超时 |
-| 点击无效 | 组件 clickable=false | 直接用 `.click()` 仍可触发坐标点击 |
-| 日志找不到 | 路径不对（因语言/设置不同） | 先执行脚本根目录探测 |
-| `exec` 返回空 result | `onSuccess` 的 result 始终为 null | 用 `run` + 写文件 + `pull_file` |
-| `run` 带 `wait=true` 超时 | `run` 不回 `command_result` | 用 `wait=false`，等几秒后拉日志 |

@@ -65,7 +65,7 @@ server 是常驻后台进程，一旦启动将持续运行，不会随任务结�
 
 先检查服务端是否已在运行：
 ```bash
-python3 "${skill_base_dir}/autoxjs-connector/server.py" --send '{"cmd":"status"}' --port 9317
+python3 "${skill_base_dir}/autoxjs-connector/call.py" '{"cmd":"status"}' --port 9317
 ```
 
 - **返回了有效状态**（包含 `"ws":` 等字段）→ 服务端已在运行且状态正常，**不要重启**，直接跳到 Step 3（引导用户连接）
@@ -77,7 +77,7 @@ nohup python3 "${skill_base_dir}/autoxjs-connector/server.py" --port 9317 --host
 
 验证启动：
 ```bash
-python3 "${skill_base_dir}/autoxjs-connector/server.py" --send '{"cmd":"status"}' --port 9317
+python3 "${skill_base_dir}/autoxjs-connector/call.py" '{"cmd":"status"}' --port 9317
 ```
 输出应包含 `"ws": "ws://0.0.0.0:9317"`。若失败则报错并中止流程（但 **不关闭 server**，若已部分启动则保持运行）。
 
@@ -112,7 +112,7 @@ options:
 
 用户点击"我已连接"后，检查连接状态：
 ```bash
-python3 "${skill_base_dir}/autoxjs-connector/server.py" --send '{"cmd":"status"}' --port 9317
+python3 "${skill_base_dir}/autoxjs-connector/call.py" '{"cmd":"status"}' --port 9317
 ```
 
 解析返回 JSON：
@@ -130,16 +130,20 @@ python3 "${skill_base_dir}/autoxjs-connector/server.py" --send '{"cmd":"status"}
 
 ## 原子操作
 
-所有命令通过 `python3 "${skill_base_dir}/autoxjs-connector/server.py" --send '<json>' --port 9317` 发送。
+所有命令通过 `call.py` 脚本发送：
+
+```bash
+python3 "${skill_base_dir}/autoxjs-connector/call.py" '<json命令>' --port 9317
+```
 
 | 操作 | 命令 | 说明 |
 |------|------|------|
 | 查询状态 | `{"cmd":"status"}` | 返回连接状态和设备信息 |
-| 截屏 | `{"cmd":"screenshot"}` | 截取手机屏幕，返回 `local_path` |
+| 截屏 | `{"cmd":"screenshot","local_path":"项目目录/phone_data"}` | 截取手机屏幕，返回 `local_path`。`local_path` 指定 PC 保存目录（可选，默认 server 启动时指定的 workspace） |
 | 获取组件树 | `{"cmd":"dump"}` | 获取当前界面 UI 组件树 (XML) |
 | 执行 JS | `{"cmd":"exec","script":"..."}` | 在手机执行 JS（**不会返回值**，见下方提示） |
 | 推送脚本 | `{"cmd":"run","script":"...","name":"x.js","wait":false}` | 推送并执行脚本（fire-and-forget） |
-| 拉取文件 | `{"cmd":"pull_file","path":"..."}` | 拉取手机文件到 `phone_data/` |
+| 拉取文件 | `{"cmd":"pull_file","path":"...","local_path":"项目目录/phone_data"}` | 拉取手机文件到 `phone_data/`。`local_path` 指定 PC 保存目录（可选，默认 server 启动时指定的 workspace） |
 | 保存项目 | `{"cmd":"save_project","project_dir":"..."}` | 推送项目目录到手机（仅保存，不执行）。项目需包含 `project.json`（name/packageName/versionName/versionCode/main） |
 | 运行项目 | `{"cmd":"run_project","project_dir":"..."}` | 推送项目目录到手机并远程执行。项目需包含 `project.json` |
 
@@ -168,29 +172,21 @@ python3 "${skill_base_dir}/autoxjs-connector/server.py" --send '{"cmd":"status"}
 
 完整协议文档见 `references/protocol.md`。
 
-## TCP 控制接口
+## 命令调用
 
-所有命令通过 TCP 控制端口（19317）发送 JSON 行，接收 JSON 行响应。
+所有命令通过 `call.py` 脚本统一发送，无需手写 TCP 代码：
 
-也可通过 `--send` 命令行快捷发送，`--port` 会自动推导控制端口（port + 10000）：
 ```bash
-python3 "${skill_base_dir}/autoxjs-connector/server.py" --send '{"cmd":"screenshot"}' --port 9317
+# 基本用法
+python3 "${skill_base_dir}/autoxjs-connector/call.py" '<json命令>' --port 9317
+
+# 示例
+python3 "${skill_base_dir}/autoxjs-connector/call.py" '{"cmd":"status"}' --port 9317
+python3 "${skill_base_dir}/autoxjs-connector/call.py" '{"cmd":"dump"}' --port 9317
+python3 "${skill_base_dir}/autoxjs-connector/call.py" '{"cmd":"screenshot","local_path":"./phone_data"}' --port 9317
 ```
 
-### TCP 直连模板
-
-```python
-import json, socket, time
-
-def ctrl(cmd_data, timeout=15):
-    s = socket.socket(); s.settimeout(timeout)
-    s.connect(("127.0.0.1", 19317))
-    s.sendall((json.dumps(cmd_data) + "\n").encode())
-    time.sleep(0.5)
-    resp = s.recv(65535)
-    s.close()
-    return json.loads(resp.decode())
-```
+`call.py` 内部自动处理 TCP 连接、循环接收（避免大响应截断）、JSON 解析和格式化输出。
 
 可用命令列表：
 
@@ -200,9 +196,9 @@ def ctrl(cmd_data, timeout=15):
 | command | command, params, wait | 发送原始命令（wait=true 等待结果 / false 即发即走） |
 | run | script, name, wait | 推送执行脚本（默认 wait=false，fire-and-forget） |
 | exec | script, wait | 执行 JS 并返回结果（**始终返回空 result**） |
-| screenshot | - | 截图并保存到本地 |
+| screenshot | local_path（可选） | 截图并保存到本地。local_path 指定 PC 保存目录 |
 | dump | - | 获取 UI 组件树 |
-| pull_file | path | 拉取手机文件 |
+| pull_file | path, local_path（可选） | 拉取手机文件。local_path 指定 PC 保存目录 |
 | save_project | project_dir | 推送项目到手机（仅保存，不执行）。需 `project.json` |
 | run_project | project_dir | 推送项目到手机并执行。需 `project.json` |
 | wait | timeout | 等待指定秒数（用于同步） |

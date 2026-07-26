@@ -264,8 +264,8 @@ class AutoJSServer:
         """执行 JS 并返回结果"""
         return await self.send_command("exec", params={"script": script}, _wait=_wait)
 
-    async def screenshot(self) -> dict:
-        """截图，返回保存路径"""
+    async def screenshot(self, local_path: str | None = None) -> dict:
+        """截图，返回保存路径。local_path 为 PC 端保存目录，默认使用 workspace。"""
         result = await self.send_command("screenshot")
         if result.get("success"):
             md5 = result.get("result", {}).get("md5", "")
@@ -274,7 +274,9 @@ class AutoJSServer:
             if img_data:
                 # path 是手机上的绝对路径，只取文件名
                 from pathlib import Path as PPath
-                save_path = self.workspace / PPath(path).name
+                save_dir = Path(local_path) if local_path else self.workspace
+                save_dir.mkdir(parents=True, exist_ok=True)
+                save_path = save_dir / PPath(path).name
                 save_path.write_bytes(img_data)
                 result["result"]["local_path"] = str(save_path)
                 result["result"]["local_size"] = len(img_data)
@@ -286,15 +288,16 @@ class AutoJSServer:
         """获取 UI 组件树"""
         return await self.send_command("dump")
 
-    async def pull_file(self, path: str) -> dict:
-        """拉取手机文件"""
+    async def pull_file(self, path: str, local_path: str | None = None) -> dict:
+        """拉取手机文件。local_path 为 PC 端保存目录，默认使用 workspace。"""
         result = await self.send_command("pull_file", params={"path": path})
         if result.get("success"):
             md5 = result.get("result", {}).get("md5", "")
             file_data = self.device.take_bytes(md5) if md5 else None
             if file_data:
-                name = Path(path).name
-                save_path = self.workspace / name
+                save_dir = Path(local_path) if local_path else self.workspace
+                save_dir.mkdir(parents=True, exist_ok=True)
+                save_path = save_dir / Path(path).name
                 save_path.write_bytes(file_data)
                 result["result"]["local_path"] = str(save_path)
         return result
@@ -403,7 +406,8 @@ class AutoJSServer:
             return result
 
         elif cmd == "screenshot":
-            result = await self.screenshot()
+            local_path = req.get("local_path", None)
+            result = await self.screenshot(local_path)
             return result
 
         elif cmd == "dump":
@@ -412,7 +416,8 @@ class AutoJSServer:
 
         elif cmd == "pull_file":
             path = req.get("path", "")
-            result = await self.pull_file(path)
+            local_path = req.get("local_path", None)
+            result = await self.pull_file(path, local_path)
             return result
 
         elif cmd == "push_project":
@@ -452,7 +457,16 @@ def send_ctrl_command(ctrl_port: int, req: dict, timeout: float = 30.0) -> dict:
     try:
         s.connect(("127.0.0.1", ctrl_port))
         s.sendall((json.dumps(req, ensure_ascii=False) + "\n").encode())
-        resp = s.makefile().readline()
+        # 循环接收直到遇到换行符，避免大响应（如 dump UI 树）被截断
+        buf = b""
+        while True:
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+            if b"\n" in buf:
+                break
+        resp = buf.decode()
         return json.loads(resp) if resp else {"error": "no response"}
     finally:
         s.close()
