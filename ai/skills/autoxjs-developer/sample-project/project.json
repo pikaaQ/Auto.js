@@ -1,0 +1,15 @@
+{
+  "name": "sample-project",
+  "packageName": "com.mizzle",
+  "versionName": "1.0",
+  "versionCode": 1,
+  "main": "main.js",
+  "ignore": [
+    ".gitignore",
+    ".omo",
+    ".codegraph",
+    "docs",
+    "devtools",
+    "phone_data"
+  ]
+}

@@ -13,6 +13,7 @@
  */
 
 function HumanClick() {
+  var self = this;
 
   /**
    * 随机整数 [min, max]
@@ -39,7 +40,6 @@ function HumanClick() {
    * @param {{ left: number, top: number, right: number, bottom: number }} region
    */
   this.humanClickRect = function (region) {
-    var self = this;
     // 在区域内随机偏移（避免每次点击位置固定，被检测为自动化）
     var marginX = Math.round((region.right - region.left) * 0.22);
     var marginY = Math.round((region.bottom - region.top) * 0.22);

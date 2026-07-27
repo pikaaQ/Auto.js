@@ -9,6 +9,7 @@ description: "AutoX.js 脚本开发助手。侧重脚本编写、推送、调试
 
 ⚠️ **在和手机交互时仅能使用 `autoxjs-connector` 技能提供的手机连接能力，禁止使用adb、新建http服务等方案，如果`autoxjs-connector` 技能中的能力失败，应该告知用户，不要自作主张使用其他方案。**
 ⚠️ **严格遵守开发和探索中的方案和准则，不要自作主张采用其他方案**
+⚠️ **需要注意到AutoXjs与nodejs存在一些解决方案上的不同，不能完全用nodejs上的经验来进行判断，以本指引和实际测试结果为准**
 
 ## 安装
 
@@ -29,111 +30,64 @@ cp -r ${skill_base_dir}/autoxjs-developer ~/.config/opencode/skills/
 
 安装后**重启 opencode** 使技能生效。
 
-## 项目目录结构约定
+## 项目结构约定
 
-项目根目录采用**双层结构**，同名子目录存放实际项目源码，与手机同步：
+### 项目结构
+项目 follow `sample-project/` 的目录结构来规划，新建项目时使用实际项目名代替 `{project}`，项目从语法上来说使模块化的node项目：
 
 ```
-my-script-project/                ← 项目根目录（git / opencode / 辅助文件）
-├── my-script-project/            ← 同名子目录，实际项目源码，与手机双向同步
-│   ├── project.json              ← 项目定义（必需，格式见下方）
-│   ├── main.js                   ← 入口脚本
-│   └── ...                       ← 其他脚本/资源文件
-├── my-script-project_test/       ← 诊断项目，用于截图OCR诊断，长期存在
-│   ├── project.json              ← name: "{project_name}_test", main: "main.js"
-│   ├── main.js                   ← 诊断脚本，每次按需修改
-│   └── pic/
-│       └── .gitkeep              ← 占位，诊断时替换为当前截图 diag.png
-├── phone_data/                   ← 从手机拉取的文件（日志、截图等），不同步到手机
-├── .omo/                         ← opencode 配置
-├── .git/                         ← 版本控制
-├── README.md                     ← 项目说明
-└── ...                           ← 编译临时文件等辅助路径
+{project}/
+├── project.json              ← 项目配置（必需，含 ignore 列表）
+├── main.js                   ← 入口脚本
+├── lib/                      ← 工具库，autoxjs必须使用 singletonRequirer 进行模块导入
+│   ├── SingletonRequirer.js  ← 单例模式导入器（路径解析详见下方）
+│   ├── HumanClick.js         ← 模拟人为点击
+│   ├── ScreenCapturePermissionUtil.js  ← 截图权限管理
+│   ├── ShizukuUtils.js       ← Shizuku 绑定 + 无障碍服务
+│   └── PrintExceptionStack.js          ← 异常堆栈打印
+├── actions/                  ← 操作步骤，按功能拆分模块
+├── ui/                       ← UI 界面相关
+│   └── assets/               ← UI 资源文件
+├── docs/                     ← 流程文档、页面分析（不推送至手机）
+│   ├── readme.md             ← 项目说明
+│   ├── flow.md               ← 流程步骤描述
+│   ├── dev_tools.md          ← 开发工具使用说明
+│   └── pages/                ← 页面分析记录
+│       └── 页面名.md
+├── devtools/                 ← 开发工具脚本（不推送至手机）
+├── phone_data/               ← 从手机拉取的文件（日志、截图等，不推送至手机）
+├── .omo/                     ← opencode 配置
+├── .git                      ← 版本控制
+├── .gitignore                ← 版本控制忽略的文件
+└── ...                       ← 其他辅助文件
 ```
 
-> 推送项目时 `project_dir` 指向**同名子目录**（即包含 `project.json` 的目录），而非根目录。
+**项目的模块化方式与nodejs稍有不同，需要使用`lib/` 下的工具模块 `singletonRequirer` 代替 `require` 导入，具体使用方式可见 lib.md**
 
-## 脚本参考
+### 项目结构首次推送到手机
 
-本技能提供了 AutoX.js API 的脚本示例，位于 `sample/` 目录下。在编写脚本时，如需使用 autoX.js 的特定 API（如 OCR、HTTP 请求、文件读写、UI 控件操作等），**优先参考 `sample/` 下对应分类的脚本**，了解 API 的调用方式和参数格式。
+首次使用 `save_project` 推送整个项目目录到手机后就可以开始调试开发了。注意 `run_project` 是直接运行项目，并不建议在推送时使用。`project.json` 的 `ignore` 字段会跳过无需推送的文件。
 
-示例目录分类：
-
-| 分类 | 说明 |
-|------|------|
-| `OCR/` | OCR 文字识别相关 |
-| `YOLO/` | YOLO 模型推理 |
-| `图片与图色处理/` | 截图、找图、找色、图片处理 |
-| `无障碍/` | 无障碍服务、组件查找与操作 |
-| `界面控件/` | UI 控件选择与交互 |
-| `HTTP网络请求/` | 网络请求 API |
-| `文件读写/` | 文件与目录操作 |
-| `调用Java API/` | Java 接口调用 |
-| 其余 | 协程、多线程、传感器、定时器、悬浮窗等 |
-
-## lib 模块
-
-> 以下模块的源文件位于 `${skill_base_dir}/lib/`，开发新项目时可直接复制到项目 `lib/` 目录下。
-
-### SingletonRequirer — 模块引用机制（必读） <a id="singleton-requirer"></a>
-
-**源文件**：`${skill_base_dir}/lib/SingletonRequirer.js`（依赖 `${skill_base_dir}/lib/PrintExceptionStack.js`）
-
-**⚠️ 当项目代码拆分多个模块时，必须使用 SingletonRequirer，禁止直接 `require`。**
-
-AutoJS 的 `require()` **没有模块缓存**——每次调用 `require('./foo.js')` 都会重新执行整个文件，返回全新的实例。这与 Node.js 的 `require()` 行为完全不同。
-
-SingletonRequirer 在 `global` 对象上模拟了模块缓存层，确保所有模块共享同一个实例。
-
-**❌ 禁止写法：**
-```javascript
-let myModule = require('./lib/MyModule.js')
-let anotherModule = require('./lib/AnotherModule.js')
-```
-
-**✅ 正确写法：**
-```javascript
-let singletonRequire = require('./lib/SingletonRequirer.js')(runtime, this)
-let myModule = singletonRequire('MyModule')
-let anotherModule = singletonRequire('AnotherModule')
-```
-
-**特性**：
-
-| 特性 | 说明 |
-|------|------|
-| 懒加载 | 首次访问时才 `require()`，减少启动开销 |
-| 全局单例 | 所有模块通过 `global` 共享同一实例，状态一致 |
-| 循环依赖解耦 | 延迟加载自动断开循环依赖链 |
-| 使用追踪 | 内置 `useCount` 统计，可通过 `singletonRequire('ModuleName', true)` 打印 |
-
-**模块内部引用其他模块**：
-```javascript
-// 在 lib/MyModule.js 内部
-let singletonRequire = require('./SingletonRequirer.js')(runtime, global)
-let OtherModule = singletonRequire('OtherModule')
-
-function MyModule() {
-  this.doSomething = function () {
-    OtherModule.helper()
-  }
+```json
+{
+  "name": "sample-project",
+  "packageName": "com.mizzle",
+  "versionName": "1.0",
+  "versionCode": 1,
+  "main": "main.js",
+  "ignore": [
+    ".gitignore", ".omo", ".codegraph",
+    "docs", "devtools", "phone_data"
+  ]
 }
-module.exports = new MyModule()
 ```
 
-**直接 require 的后果**：
+`project.json` 中的 `ignore` 列表用于控制推送时跳过哪些文件/目录（如 `docs/`、`devtools/`、`phone_data/`），减少推送流量。`ui/assets/` 未发生变化时，可临时将其加入 `ignore` 以加速推送。
 
-| 问题 | 后果 |
-|------|------|
-| 多实例 | 状态不共享，全局状态分裂 |
-| 重复初始化 | 模块被重复创建，浪费内存 |
-| 循环依赖 | 模块 A require B，B require A → 死锁或拿到 undefined |
-
-
-## 基础指令
+## 与手机协同开发
 ### 脚本根目录探测与缓存（首次开发前执行）
 
-开发过程中的日志拉取、脚本保存等操作需要知道手机上的脚本根目录。此路径**不是固定的**，取决于 App 语言（中文 `/脚本/`、英文 `/Scripts/`）和用户自定义设置。
+开发过程中的日志拉取、图片保存等操作需要知道手机上的脚本根目录。此路径**不是固定的**，取决于 App 语言（中文 `/脚本/`、英文 `/Scripts/`）和用户自定义设置。
 
 > ⚡ **`dir_path` 缓存在 Agent 的当前 session 记忆中。** 首次探测后记下来，后续所有操作直接使用，不许每次都探测。
 
@@ -192,29 +146,14 @@ sleep 3  # 等日志写入
 
 #### 推送项目到手机
 
-使用 `save_project`（仅保存）或 `run_project`（保存并执行）推送整个项目目录到手机。
-
-> ⚠️ `project_dir` 指向**同名子目录**（包含 `project.json` 的目录），而非项目根目录。
-
-> ⚠️ **项目必须包含 `project.json`**，字段要求：
-> ```json
-> {
->   "name": "项目名",
->   "packageName": "com.example.app",
->   "versionName": "1.0",
->   "versionCode": 1,
->   "main": "main.js"
-> }
-> ```
-> 缺少这些字段会导致 `ProjectLauncher` 抛出"无效项目"异常。
-
+使用 `save_project` 推送整个项目目录到手机。
 ```bash
 CALL="python3 ${skill_base_dir}/autoxjs-connector/call.py"
 $CALL "{\"cmd\":\"save_project\",\"project_dir\":\"/path/to/your/project\"}" --port 9317
 ```
 
 #### 执行项目（不保存到本地）
-与`save_project`方案一致，将 `save_project` 改为 `run_project` 即可。
+与`save_project`协议一致，将 `save_project` 指令改为 `run_project` 即可。
 
 #### 拉取日志
 
@@ -239,14 +178,17 @@ $CALL "{\"cmd\":\"pull_file\",\"path\":\"{dir_path}/.logs/autojs-log4j.txt\",\"l
 
 ### 探索与验证方法
 
-当需要探索页面和验证操作时，使用test目录的项目来进行。先在test目录项目中编辑好脚本，然后推送执行，最后拉取执行日志来分析，达成探索和验证的目的。
+当需要探索页面和验证操作时，在 `devtools/` 下编辑好脚本，然后推送执行（`run` 指令，探索脚本为单脚本，不会保存到手机，因此 **不能使用 `lib/` 下的模块**，所有代码必须内联），最后拉取执行日志来分析，达成探索和验证的目的。
 
 #### 如何探索
 
-探索页面时，test项目脚本逻辑为：
-1. 进入页面
-2. **截图 + mlkocr**：
-    探索/验证时脚本中**使用 Shizuku 执行 `screencap` 截图**（无需申请截图权限，无需弹窗），固定保存到当前test项目在手机中的目录下的pic目录。然后读取截图后用 `mlkocr` 识别文字，识别结果写入log。
+**探索页面时， 应该尽可能多的获取到全部页面信息来进行分析然后保存到文档，而不是仅针对当前任务中的特征来分析，因为尽可能多的页面信息可以使脚本更健壮，也方便后续测试和维护。**
+
+探索脚本逻辑为：
+1. 检查项目下有没有tmp目录，没有就先创建
+2. 进入页面
+3. **截图 + mlkocr**：
+    探索/验证时脚本中**使用 Shizuku 执行 `screencap` 截图**（无需申请截图权限，无需弹窗），固定保存到当前项目的tmp目录。然后读取截图后用 `mlkocr` 识别文字，识别结果写入log。
     **如果 Shizuku 截图失败，提示用户检查 Shizuku 是否运行，而不是自作主张采用其他方法**
 
 示例（含绑定 + 截图）：
@@ -267,7 +209,11 @@ if (!proto.isRunning()) {
 }
 
 // === 截图 ===
-var path = files.cwd() + '/pic/diag.png';
+var tmpDir = files.cwd() + '/tmp';
+if (!files.exists(tmpDir)) {
+  files.ensureDir(tmpDir);
+}
+var path = tmpDir + '/diag.png';
 log('截图保存路径: ' + path);
 var result = $shizuku("screencap -p " + path);
 if (result.code !== 0) {
@@ -287,35 +233,30 @@ for (var i = 0; i < (raw ? raw.length : 0); i++) {
 }
 img.recycle();
 ```
-3. **Dump 组件树**：获取当前界面 UI 组件树 XML，分析组件的 className、desc、text、bounds、clickable 等属性
+4. **Dump 组件树**：获取当前界面 UI 组件树 XML，分析组件的 className、desc、text、bounds、clickable 等属性
 
-待脚本执行完成后，结合 OCR 结果和组件树信息，分析当前页面，并记录页面文档。**如果上述方式分析出的信息无法达成流程要求，可以在申请用户同意后，将截图拉取到项目中，使用look_at分析图片，这种操作必须申请用户同意后才可实施。**
+待脚本执行完成后，结合 OCR 结果和组件树信息，分析当前页面，并在docs目录下记录页面文档信息。
+**如果上述方式分析出的信息无法达成流程要求，可以在申请用户同意后，将截图拉取到项目中，使用look_at分析图片，这种操作必须申请用户同意后才可实施。**
 
 #### 如何验证
-验证操作时，test项目脚本逻辑为：
-1. 进入操作的前置页面
-2. 执行单元操作
-3. 截图 + mlkocr + dump组件树（方案同探索中的2、3），判断操作后的页面和页面组件是否和预期一致。
+验证操作时，项目脚本逻辑为：
+1. 检查项目下有没有tmp目录，没有就先创建
+2. 进入操作的前置页面
+3. 执行单元操作
+4. 截图 + mlkocr + dump组件树（方案同探索中的2、3），判断操作后的页面和页面组件是否和预期一致。
 
 
 ### 开发要求与约定：
-最终在手机上运行的代码在子目录my-script-project/中，对于这些代码，在开发时有如下要求：
+对非devtool下的代码(即在项目中实际运行的代码)，在开发时有如下要求：
 
 #### 整体流程，需要模块清晰，与流程文档一致，尽量将一组相关的操作封装为一个函数
 
-#### 模块引用：必须使用 SingletonRequirer，禁止直接 require
+#### **如下功能必须使用 lib 下的模块**
+##### 模块化导入时必须使用 `singletonRequirer` 
+##### 截图权限获取时必须使用`ScreenCapturePermissionUtil`，仅可在main.js入口时调用一次
+##### 所有点击操作禁止直接调用组件的 `.click()` 方法，点击操作必须使用`HumanClick`
+##### 授权无障碍时先使用 Shizuku 管理 `ShizukuUtils`，如果绑定失败或授权失败再使用auto()申请人工授权
 
-AutoJS 的 `require()` 没有模块缓存，直接 `require` 会导致多实例、状态分裂、循环依赖等问题（详见 [lib 模块 → SingletonRequirer](#singleton-requirer)）。
-
-```javascript
-// ❌ 错误
-let myModule = require('./lib/MyModule.js')
-
-// ✅ 正确
-let singletonRequire = require('./lib/SingletonRequirer.js')(runtime, this)
-let myModule = singletonRequire('MyModule')
-let { someFunc } = singletonRequire('MyModule')  // 支持解构
-```
 
 #### 对流程的单个步骤，需要采取 检查 → 执行 → 验证 的执行三步方案闭环：
 
@@ -374,64 +315,24 @@ waitForActivity("TargetActivity", 5000);
 4. **🏅 找图（最后手段）** — 以上均不行时
    - 裁剪截图中特征区域为模板图，使用 `findImage()` 匹配
 
-#### 截图权限获取：`ScreenCapturePermissionUtil`
 
-**源文件**：`${skill_base_dir}/lib/ScreenCapturePermissionUtil.js`
+#### 脚本参考
 
-| 方法 | 说明 |
+本技能提供了 AutoX.js API 的脚本示例，位于 `sample/` 目录下。在编写脚本时，如需使用 autoX.js 的特定 API（如 OCR、HTTP 请求、文件读写、UI 控件操作等），**优先参考 `sample/` 下对应分类的脚本**，了解 API 的调用方式和参数格式。
+
+示例目录分类：
+
+| 分类 | 说明 |
 |------|------|
-| `requestScreenPermission()` | 申请截图权限（非阻塞弹窗），轮询等待就绪，成功返回 true |
-
-**模块化使用**（通过 SingletonRequirer）：
-```javascript
-let singletonRequire = require('./lib/SingletonRequirer.js')(runtime, this)
-let captureUtil = singletonRequire('ScreenCapturePermissionUtil')
-if (!captureUtil.requestScreenPermission()) exit();
-```
-
-**非模块化**：直接复制函数到脚本中即可使用。
-
-#### Shizuku 管理：`ShizukuUtils`
-
-**源文件**：`${skill_base_dir}/lib/ShizukuUtils.js`
-
-| 方法 | 说明 |
-|------|------|
-| `ensureShizuku()` | 绑定 Shizuku 服务（自动处理过期引用），成功返回 true |
-| `enableAccessibility()` | 通过 Shizuku 启用无障碍服务，成功返回 true |
-
-**模块化使用**（通过 SingletonRequirer）：
-```javascript
-let singletonRequire = require('./lib/SingletonRequirer.js')(runtime, this)
-let shizukuUtil = singletonRequire('ShizukuUtils')
-if (!shizukuUtil.ensureShizuku()) exit();
-shizukuUtil.enableAccessibility();
-```
-
-**非模块化**：直接复制函数到脚本中即可使用。
-
-#### 点击操作：`HumanClick`
-
-**源文件**：`${skill_base_dir}/lib/HumanClick.js`
-
-| 方法 | 说明 |
-|------|------|
-| `humanClickRect(region)` | 在区域内模拟人为点击（随机偏移 + 滑入手势） |
-| `randRange(min, max)` | 辅助函数：随机整数 [min, max] |
-| `randInt(max)` | 辅助函数：随机整数 [0, max) |
-
-`region` 格式：`{ left, top, right, bottom }`，来自 OCR 识别结果或组件 `bounds()`。
-
-**所有点击操作禁止直接调用组件的 `.click()` 方法**，必须使用 `humanClickRect()`。
-
-**模块化使用**（通过 SingletonRequirer）：
-```javascript
-let singletonRequire = require('./lib/SingletonRequirer.js')(runtime, this)
-let { humanClickRect } = singletonRequire('HumanClick')
-humanClickRect(region)
-```
-
-**非模块化**：直接复制函数到脚本中即可使用。
+| `OCR/` | OCR 文字识别相关 |
+| `YOLO/` | YOLO 模型推理 |
+| `图片与图色处理/` | 截图、找图、找色、图片处理 |
+| `无障碍/` | 无障碍服务、组件查找与操作 |
+| `界面控件/` | UI 控件选择与交互 |
+| `HTTP网络请求/` | 网络请求 API |
+| `文件读写/` | 文件与目录操作 |
+| `调用Java API/` | Java 接口调用 |
+| 其余 | 协程、多线程、传感器、定时器、悬浮窗等 |
 
 
 #### 提示与避坑
