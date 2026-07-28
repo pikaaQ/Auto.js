@@ -282,8 +282,35 @@ class AutoJSServer:
                 result["result"]["local_path"] = str(save_path)
         return result
 
+    def _load_ignore_patterns(self, project_dir: str) -> list[str]:
+        """从 project.json 读取 ignore 列表"""
+        proj_json = Path(project_dir) / "project.json"
+        if not proj_json.is_file():
+            return []
+        try:
+            with open(proj_json, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            return config.get("ignore", [])
+        except (json.JSONDecodeError, OSError):
+            return []
+
+    def _should_ignore(self, rel_path: str, ignore_patterns: list[str]) -> bool:
+        """判断相对路径是否匹配 ignore 规则"""
+        for pattern in ignore_patterns:
+            pattern = pattern.strip("/")
+            if not pattern:
+                continue
+            if rel_path == pattern:
+                return True
+            if rel_path.startswith(pattern + "/"):
+                return True
+        return False
+
     def _zip_project(self, project_dir: str) -> tuple[bytes, str]:
-        """打包项目目录为 ZIP，返回 (zip_data, dir_name, md5)"""
+        """打包项目目录为 ZIP，返回 (zip_data, dir_name, md5)
+
+        读取 project.json 中的 ignore 列表，跳过匹配的文件。
+        """
         import zipfile
         import io
 
@@ -291,12 +318,19 @@ class AutoJSServer:
         if not proj_path.is_dir():
             raise FileNotFoundError(f"目录不存在: {project_dir}")
 
+        ignore_patterns = self._load_ignore_patterns(project_dir)
+
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for file in proj_path.rglob("*"):
-                if file.is_file() and file.name != ".DS_Store":
-                    arcname = str(file.relative_to(proj_path))
-                    zf.write(file, arcname)
+                if not file.is_file():
+                    continue
+                if file.name == ".DS_Store":
+                    continue
+                rel_path = str(file.relative_to(proj_path))
+                if self._should_ignore(rel_path, ignore_patterns):
+                    continue
+                zf.write(file, rel_path)
         zip_data = buf.getvalue()
         md5 = hashlib.md5(zip_data).hexdigest()
         return zip_data, proj_path.name, md5
@@ -393,11 +427,6 @@ class AutoJSServer:
             path = req.get("path", "")
             local_path = req.get("local_path", None)
             result = await self.pull_file(path, local_path)
-            return result
-
-        elif cmd == "push_project":
-            project_dir = req.get("project_dir", "")
-            result = await self.push_project(project_dir)
             return result
 
         elif cmd == "run_project":
