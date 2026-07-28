@@ -14,13 +14,13 @@
 let printExceptionStack = require('./PrintExceptionStack.js')
 
 const projectRoot = (function () {
-  // AutoX.js 不支持 __dirname，从 Error stack 获取本文件路径
   let dir = files.cwd()
   try {
     let stack = new Error().stack
     let lines = stack.split('\n')
     for (let i = 0; i < lines.length; i++) {
-      let m = lines[i].match(/\((.+?\.js):\d+:\d+\)/) || lines[i].match(/at (.+?\.js):\d+:\d+/)
+      // :(\d+)(:\d+)? 列号可选：兼容 Rhino（file.js:line）和 V8（file.js:line:col）
+      let m = lines[i].match(/\((.+?\.js):(\d+)(:\d+)?\)/) || lines[i].match(/at (.+?\.js):(\d+)(:\d+)?/)
       if (m && m[1].indexOf('SingletonRequirer') !== -1) {
         dir = m[1].substring(0, m[1].lastIndexOf('/'))
         break
@@ -36,8 +36,9 @@ const projectRoot = (function () {
 function getCallerFile() {
   let stack = new Error().stack
   let lines = stack.split('\n')
-  for (let i = 3; i < lines.length; i++) {
-    let m = lines[i].match(/\((.+?\.js):\d+:\d+\)/) || lines[i].match(/at (.+?\.js):\d+:\d+/)
+  // Rhino 栈帧层数在不同上下文（require 加载 vs 直接调用）中不同，从 0 开始用 indexOf 过滤自身，不硬编码起始索引
+  for (let i = 0; i < lines.length; i++) {
+    let m = lines[i].match(/\((.+?\.js):(\d+)(:\d+)?\)/) || lines[i].match(/at (.+?\.js):(\d+)(:\d+)?/)
     if (m && m[1].indexOf('SingletonRequirer') === -1) {
       return m[1]
     }
