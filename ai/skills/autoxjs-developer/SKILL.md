@@ -173,18 +173,44 @@ $CALL "{\"cmd\":\"pull_file\",\"path\":\"{dir_path}/.logs/autojs-log4j.txt\",\"l
 
 1. 先根据用户描述，规划脚本流程, 并和用户确认，看用户有没有补充，直至流程清晰并得到用户确认，保留流程文档，后续根据文档来进行开发。
 2. 开始探索流程中出现的每个页面，探索方式见 探索与验证方法 章节。对探索的每个页面进行组件分析得到充分认知，判断组件操作后的结果，并将页面组件记录到组件文档。完成当前页面后，自动用脚本操作进入下一个页面，循环操作直到记录所有页面。
-3. 根据流程和页面的研究结果，依次开发流程中每个步骤的脚本，开发完成后验证单个步骤是否复合要求，验证方式见 探索与验证方法 章节。
-4. 将所有步骤根据流程进行组合，完成脚本编写，提示用户测试验证。
+3. 基于2中对每个页面的深入研究，生成 `checkPage()` 方法。探索时在 `docs/pages/` 下为每个页面命名并记录特征，在 `actions/Pages.js` 中将这些页面名定义为常量，`checkPage()` 根据 OCR/组件树特征判断当前页面，返回对应的页面常量或 `"unknown"`。这个方法可供每个动作的检查和验证环节使用（知道当前在哪个页面很重要）。
+
+   ```javascript
+   // actions/Pages.js - 由探索阶段生成
+   let singletonRequirer = require('../lib/SingletonRequirer.js')(runtime, this);
+
+   // 页面常量（探索阶段在 docs/pages/ 中为每个页面命名）
+   const PAGES = {
+     HOME: "主页",
+     MEMBER: "会员页",
+     // ... 探索后补充
+   };
+
+   function checkPage() {
+     // 截图 → OCR → 组件树 → 匹配特征 → 返回页面名
+     // 无法识别时返回 "unknown"
+     var img = captureScreen();
+     var raw = $mlKitOcr.detect(img);
+     img.recycle();
+     // TODO: 根据 OCR 结果和组件特征判断页面
+     // if (raw.some(r => r.label.contains("会员"))) return PAGES.MEMBER;
+     return "unknown";
+   }
+
+   module.exports = { checkPage, PAGES };
+   ```
+4. 根据流程和页面的研究结果，依次开发流程中每个步骤的脚本，开发完成后验证单个步骤是否复合要求，验证方式见 探索与验证方法 章节。
+5. 将所有步骤根据流程进行组合，完成脚本编写，提示用户测试验证。
 
 ### 探索与验证方法
 
 当需要探索页面和验证操作时，在 `devtools/` 下编辑好脚本，然后推送执行（`run` 指令，探索脚本为单脚本，不会保存到手机，因此 **不能使用 `lib/` 下的模块**，所有代码必须内联），最后拉取执行日志来分析，达成探索和验证的目的。
 
-`devtools/` 下提供了通用探索脚本模板 `explore_template.js`，复制后修改 TODO 部分即可使用。
-
 #### 如何探索
 
 **探索页面时， 应该尽可能多的获取到全部页面信息来进行分析然后保存到文档，而不是仅针对当前任务中的特征来分析，因为尽可能多的页面信息可以使脚本更健壮，也方便后续测试和维护。**
+
+`devtools/` 下提供了通用探索脚本模板 `explore_template.js`，复制后修改 TODO 部分即可使用。模板已包含 `=== 开始 ===` 和 `=== 完毕 ===` 日志标记。
 
 探索脚本逻辑为：
 1. 检查项目下有没有tmp目录，没有就先创建
@@ -192,52 +218,10 @@ $CALL "{\"cmd\":\"pull_file\",\"path\":\"{dir_path}/.logs/autojs-log4j.txt\",\"l
 3. **截图 + mlkocr**：
     探索/验证时脚本中**使用 Shizuku 执行 `screencap` 截图**（无需申请截图权限，无需弹窗），固定保存到当前项目的tmp目录。然后读取截图后用 `mlkocr` 识别文字，识别结果写入log。
     **如果 Shizuku 截图失败，提示用户检查 Shizuku 是否运行，而不是自作主张采用其他方法**
-
-示例（含绑定 + 截图）：
-```javascript
-// === Shizuku 绑定 ===
-var proto = Object.getPrototypeOf($shizuku);
-if (!proto.isRunning()) {
-  proto.requestPermission();
-  sleep(2000);
-  // 已授权时 requestPermission 不会重新触发回调，用反射直接绑定
-  if (!proto.isRunning()) {
-    var clazz = proto.getClass();
-    var bindMethod = clazz.getDeclaredMethod("bindUserService");
-    bindMethod.setAccessible(true);
-    bindMethod.invoke(proto);
-    sleep(3000);
-  }
-}
-
-// === 截图 ===
-var tmpDir = files.cwd() + '/tmp';
-if (!files.exists(tmpDir)) {
-  files.ensureDir(tmpDir);
-}
-var path = tmpDir + '/diag.png';
-log('截图保存路径: ' + path);
-var result = $shizuku("screencap -p " + path);
-if (result.code !== 0) {
-  log('截图失败: ' + result.error);
-  exit();
-}
-
-// 读取截图并用 mlkocr 识别文字
-var img = images.read(path);
-var raw = $mlKitOcr.detect(img);
-log('OCR 结果数量: %d', raw ? raw.length : 0);
-for (var i = 0; i < (raw ? raw.length : 0); i++) {
-  log('OCR[%d]: label=%s bounds=[%d,%d,%d,%d]',
-    i, raw[i].label,
-    raw[i].bounds.left, raw[i].bounds.top,
-    raw[i].bounds.right, raw[i].bounds.bottom);
-}
-img.recycle();
-```
 4. **Dump 组件树**：获取当前界面 UI 组件树 XML，分析组件的 className、desc、text、bounds、clickable 等属性
 
-待脚本执行完成后，结合 OCR 结果和组件树信息，分析当前页面，并在docs目录下记录页面文档信息。
+
+同一页面，将该脚本逻辑执行多次，获得尽可能全部可能的OCR结果和组件树dump结果。待脚本执行完成后，结合 OCR 结果和组件树信息，分析当前页面，并在docs目录下记录页面文档信息。
 **如果上述方式分析出的信息无法达成流程要求，可以在申请用户同意后，将截图拉取到项目中，使用look_at分析图片，这种操作必须申请用户同意后才可实施。**
 
 #### 如何验证
@@ -295,8 +279,8 @@ let menu = desc("目标菜单").findOne(3000);
 // [检查] 菜单是否出现（与上一步验证合并，无需重复）
 // [执行] 点击菜单
 menu.click();
-// [验证] 已到达目标页面
-waitForActivity("TargetActivity", 5000);
+// [验证] 使用页面特征检查是否已到达目标页面
+Pages.checkPage() == Pages.PAGES.HOME;
 ```
 
 #### 操作定位方案
