@@ -173,32 +173,7 @@ $CALL "{\"cmd\":\"pull_file\",\"path\":\"{dir_path}/.logs/autojs-log4j.txt\",\"l
 
 1. 先根据用户描述，规划脚本流程, 并和用户确认，看用户有没有补充，直至流程清晰并得到用户确认，保留流程文档，后续根据文档来进行开发。
 2. 开始探索流程中出现的每个页面，探索方式见 探索与验证方法 章节。对探索的每个页面进行组件分析得到充分认知，判断组件操作后的结果，并将页面组件记录到组件文档。完成当前页面后，自动用脚本操作进入下一个页面，循环操作直到记录所有页面。
-3. 基于2中对每个页面的深入研究，生成 `checkPage()` 方法。探索时在 `docs/pages/` 下为每个页面命名并记录特征，在 `actions/Pages.js` 中将这些页面名定义为常量，`checkPage()` 根据 OCR/组件树特征判断当前页面，返回对应的页面常量或 `"unknown"`。这个方法可供每个动作的检查和验证环节使用（知道当前在哪个页面很重要）。
-
-   ```javascript
-   // actions/Pages.js - 由探索阶段生成
-   let singletonRequirer = require('../lib/SingletonRequirer.js')(runtime, this);
-
-   // 页面常量（探索阶段在 docs/pages/ 中为每个页面命名）
-   const PAGES = {
-     HOME: "主页",
-     MEMBER: "会员页",
-     // ... 探索后补充
-   };
-
-   function checkPage() {
-     // 截图 → OCR → 组件树 → 匹配特征 → 返回页面名
-     // 无法识别时返回 "unknown"
-     var img = captureScreen();
-     var raw = $mlKitOcr.detect(img);
-     img.recycle();
-     // TODO: 根据 OCR 结果和组件特征判断页面
-     // if (raw.some(r => r.label.contains("会员"))) return PAGES.MEMBER;
-     return "unknown";
-   }
-
-   module.exports = { checkPage, PAGES };
-   ```
+3. 基于2中对每个页面的深入研究，生成 `checkPage()` 方法。探索时在 `docs/pages/` 下为每个页面命名并记录特征，在 `actions/Pages.js` 中将这些页面名定义为常量，`checkPage()` 根据 OCR/组件树特征判断当前页面，返回对应的页面常量或 `"unknown"`。模板代码见 `sample-project/actions/Pages.js`，引入后通过 `singletonRequirer` 导入使用。这个方法可供每个动作的检查和验证环节使用（知道当前在哪个页面很重要）。
 4. 根据流程和页面的研究结果，依次开发流程中每个步骤的脚本，开发完成后验证单个步骤是否复合要求，验证方式见 探索与验证方法 章节。
 5. 将所有步骤根据流程进行组合，完成脚本编写，提示用户测试验证。
 
