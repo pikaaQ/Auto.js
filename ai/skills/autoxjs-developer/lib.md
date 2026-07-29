@@ -16,6 +16,35 @@ let myModule = singletonRequirer('MyModule')
 let { someFunc } = singletonRequirer('MyModule')  // 支持解构
 ```
 
+#### SingletonRequirer 使用规范
+
+**1. `require` 路径必须使用相对路径**
+
+```javascript
+// 从项目根目录加载
+var singletonRequire = require('./lib/SingletonRequirer.js')(runtime, this)
+
+// 从 ui/ 子目录加载
+var singletonRequire = require('../lib/SingletonRequirer.js')(runtime, this)
+```
+
+**2. `singletonRequire` 调用必须在文件顶部，禁止在函数内部调用**
+
+所有模块依赖必须在文件顶部一次性加载，确保统一使用 `/` 前缀绝对路径，避免重复加载和实例不一致。
+
+```javascript
+// ✅ 正确：文件顶部加载，/ 前缀绝对路径
+var singletonRequire = require('../lib/SingletonRequirer.js')(runtime, this)
+var screenUtils = singletonRequire('/lib/ScreenUtils')
+var S = singletonRequire('./StateContainer').S
+var frameConfig = singletonRequire('/ui/FrameConfig')
+
+// ❌ 错误：在函数内部调用
+function doSomething() {
+  var screenUtils = singletonRequire('/lib/ScreenUtils')  // 禁止
+}
+```
+
 
 ### 截图权限获取：`ScreenCapturePermissionUtil`
 

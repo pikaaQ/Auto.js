@@ -14,12 +14,13 @@
 let printExceptionStack = require('./PrintExceptionStack.js')
 
 const projectRoot = (function () {
+  // AutoX.js 不支持 __dirname，从 Error stack 获取本文件路径
   let dir = files.cwd()
   try {
     let stack = new Error().stack
     let lines = stack.split('\n')
     for (let i = 0; i < lines.length; i++) {
-      // :(\d+)(:\d+)? 列号可选：兼容 Rhino（file.js:line）和 V8（file.js:line:col）
+      // Rhino 栈帧格式: at file.js:line（无列号），兼容两种格式
       let m = lines[i].match(/\((.+?\.js):(\d+)(:\d+)?\)/) || lines[i].match(/at (.+?\.js):(\d+)(:\d+)?/)
       if (m && m[1].indexOf('SingletonRequirer') !== -1) {
         dir = m[1].substring(0, m[1].lastIndexOf('/'))
@@ -27,6 +28,15 @@ const projectRoot = (function () {
       }
     }
   } catch (e) {}
+  // 去除 Error stack 中的 file: 前缀，统一路径格式
+  if (dir.indexOf('file:') === 0) {
+    dir = dir.substring(5)
+  }
+  // Android 上 /data/user/0/ 和 /data/data/ 是同一目录（符号链接），统一为标准路径
+  // 避免缓存 key 不一致导致模块加载两次
+  if (dir.indexOf('/data/data/') === 0) {
+    dir = '/data/user/0/' + dir.substring(11)
+  }
   if (dir.endsWith('/lib')) {
     return dir.substring(0, dir.length - 4)
   }
@@ -34,9 +44,11 @@ const projectRoot = (function () {
 })()
 
 function getCallerFile() {
+  // 从栈中找出调用 singletonRequirer 的文件路径
+  // 从 i=0 开始遍历，用 indexOf('SingletonRequirer') 过滤自身帧
+  // 相比硬编码 i=3 更健壮，不受 Rhino 栈深度变化影响
   let stack = new Error().stack
   let lines = stack.split('\n')
-  // Rhino 栈帧层数在不同上下文（require 加载 vs 直接调用）中不同，从 0 开始用 indexOf 过滤自身，不硬编码起始索引
   for (let i = 0; i < lines.length; i++) {
     let m = lines[i].match(/\((.+?\.js):(\d+)(:\d+)?\)/) || lines[i].match(/at (.+?\.js):(\d+)(:\d+)?/)
     if (m && m[1].indexOf('SingletonRequirer') === -1) {
@@ -66,6 +78,9 @@ function resolveModulePath(modulePath) {
   if (modulePath.startsWith('./') || modulePath.startsWith('../')) {
     let caller = getCallerFile()
     let callerDir = caller ? caller.substring(0, caller.lastIndexOf('/')) : projectRoot
+    if (callerDir.indexOf('file:') === 0) {
+      callerDir = callerDir.substring(5)
+    }
     return resolveRelativePath(callerDir, modulePath)
   }
   return projectRoot + '/' + modulePath
