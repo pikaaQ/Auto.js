@@ -147,12 +147,11 @@ if (!proto.isRunning()) {{
 log("Shizuku 运行状态: " + proto.isRunning());
 if (!proto.isRunning()) {{ log("Shizuku 不可用"); exit(); }}
 log("Step2: 创建并清理 tmp 目录");
-files.removeDir(tmp + "/");
-files.ensureDir(tmp + "/");
-log("tmp 目录就绪: " + files.exists(tmp));
+files.removeDir(tmp);
+files.ensureDir(tmp);
 log("tmp 目录就绪: " + files.exists(tmp));
 log("Step3: 截图");
-var picPath = tmp + "/screenshot.png";
+var picPath = tmp + "screenshot.png";
 var result = $shizuku("screencap -p " + picPath);
 log("截图结果: code=" + result.code + " error=" + result.error);
 if (result.code !== 0) {{ log("截图失败: " + result.error); exit(); }}
@@ -167,12 +166,11 @@ if (img) {{
       bounds: {{ left: raw[i].bounds.left, top: raw[i].bounds.top, right: raw[i].bounds.right, bottom: raw[i].bounds.bottom }}
     }});
   }}
-  files.write(tmp + "/ocr.json", JSON.stringify(ocrList));
+  files.write(tmp + "ocr.json", JSON.stringify(ocrList));
   img.recycle();
 }}
 log("Step5: Dump 组件树");
-var xml = UiSelector.dump();
-if (xml) {{ files.write(tmp + "/dump.xml", xml); }}
+try {{ var xml = UiSelector.dump(); if (xml) {{ files.write(tmp + "/dump.xml", xml); }} }} catch(e) {{ log("Dump 不可用: " + e); }}
 log("=== 探索完毕: " + pageId + " ===");
 '''
 
@@ -182,9 +180,9 @@ log("=== 探索完毕: " + pageId + " ===");
         os.makedirs(local_dir, exist_ok=True)
         tmp = f"{_STATE['dir_path']}/tmp"
         file_map = {
-            f"{tmp}/screenshot.png": "screenshot.png",
-            f"{tmp}/ocr.json": "ocr.json",
-            f"{tmp}/dump.xml": "dump.xml",
+            f"{tmp}screenshot.png": "screenshot.png",
+            f"{tmp}ocr.json": "ocr.json",
+            f"{tmp}dump.xml": "dump.xml",
         }
         for phone_path, local_name in file_map.items():
             local_path = os.path.join(local_dir, local_name)
