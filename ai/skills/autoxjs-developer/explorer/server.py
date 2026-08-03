@@ -130,9 +130,12 @@ class ExploreHandler(SimpleHTTPRequestHandler):
         dp = _STATE["dir_path"]
         return f'''"autojs";
 var pageId = "{page_id}";
-var base = "{dp}/tmp/explore_" + pageId;
+var tmp = "{dp}/tmp";
 log("=== 探索开始: " + pageId + " ===");
-log("Step1: 绑定 Shizuku");
+log("Step1: 清理 tmp");
+files.removeDir(tmp);
+files.ensureDir(tmp);
+log("Step2: 绑定 Shizuku");
 var proto = Object.getPrototypeOf($shizuku);
 if (!proto.isRunning()) {{
   log("Shizuku 未运行, 尝试绑定");
@@ -146,12 +149,12 @@ if (!proto.isRunning()) {{
 }}
 log("Shizuku 运行状态: " + proto.isRunning());
 if (!proto.isRunning()) {{ log("Shizuku 不可用"); exit(); }}
-log("Step2: 截图");
-var picPath = base + "_screenshot.png";
+log("Step3: 截图");
+var picPath = tmp + "/screenshot.png";
 var result = $shizuku("screencap -p " + picPath);
 log("截图结果: code=" + result.code + " error=" + result.error);
 if (result.code !== 0) {{ log("截图失败: " + result.error); exit(); }}
-log("Step3: OCR");
+log("Step4: OCR");
 var img = images.read(picPath);
 if (img) {{
   var raw = $mlKitOcr.detect(img);
@@ -162,12 +165,12 @@ if (img) {{
       bounds: {{ left: raw[i].bounds.left, top: raw[i].bounds.top, right: raw[i].bounds.right, bottom: raw[i].bounds.bottom }}
     }});
   }}
-  files.write(base + "_ocr.json", JSON.stringify(ocrList));
+  files.write(tmp + "/ocr.json", JSON.stringify(ocrList));
   img.recycle();
 }}
-log("Step4: Dump 组件树");
+log("Step5: Dump 组件树");
 var xml = UiSelector.dump();
-if (xml) {{ files.write(base + "_dump.xml", xml); }}
+if (xml) {{ files.write(tmp + "/dump.xml", xml); }}
 log("=== 探索完毕: " + pageId + " ===");
 '''
 
@@ -175,11 +178,11 @@ log("=== 探索完毕: " + pageId + " ===");
         time.sleep(5)
         local_dir = self._explore_dir(project_path, page_id)
         os.makedirs(local_dir, exist_ok=True)
-        base = f"{_STATE['dir_path']}/tmp/explore_{page_id}"
+        tmp = f"{_STATE['dir_path']}/tmp"
         file_map = {
-            f"{base}_screenshot.png": "screenshot.png",
-            f"{base}_ocr.json": "ocr.json",
-            f"{base}_dump.xml": "dump.xml",
+            f"{tmp}/screenshot.png": "screenshot.png",
+            f"{tmp}/ocr.json": "ocr.json",
+            f"{tmp}/dump.xml": "dump.xml",
         }
         for phone_path, local_name in file_map.items():
             local_path = os.path.join(local_dir, local_name)
