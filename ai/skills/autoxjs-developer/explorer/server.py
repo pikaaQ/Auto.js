@@ -182,7 +182,9 @@ log("=== 探索完毕: " + pageId + " ===");
             phone_path = f"{tmp}/{fname}"
             local_path = os.path.join(local_dir, fname)
             cmd = {"cmd": "pull_file", "path": phone_path, "local_path": local_dir}
+            print(f"  拉取: {phone_path} -> {local_dir}")
             resp = self._call_phone(cmd)
+            print(f"  响应: {json.dumps(resp, ensure_ascii=False)[:200]}")
             if resp.get("success") and os.path.exists(local_path):
                 print(f"  ✓ 已拉取 {fname}")
             else:
