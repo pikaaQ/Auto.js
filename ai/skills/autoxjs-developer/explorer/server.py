@@ -130,7 +130,7 @@ class ExploreHandler(SimpleHTTPRequestHandler):
         dp = _STATE["dir_path"]
         return f'''"autojs";
 var pageId = "{page_id}";
-var tmp = "{dp}/tmp";
+var tmp = "{dp}/tmp/";
 log("=== 探索开始: " + pageId + " ===");
 log("Step1: 绑定 Shizuku");
 var proto = Object.getPrototypeOf($shizuku);
@@ -147,14 +147,9 @@ if (!proto.isRunning()) {{
 log("Shizuku 运行状态: " + proto.isRunning());
 if (!proto.isRunning()) {{ log("Shizuku 不可用"); exit(); }}
 log("Step2: 创建并清理 tmp 目录");
-// 先清理旧文件
-$shizuku("rm -rf '" + tmp + "'");
-sleep(200);
-if (!files.ensureDir(tmp)) {{
-  log("ensureDir 失败, 使用 shizuku 创建");
-  $shizuku("mkdir -p '" + tmp + "'");
-  sleep(500);
-}}
+files.removeDir(tmp + "/");
+files.ensureDir(tmp + "/");
+log("tmp 目录就绪: " + files.exists(tmp));
 log("tmp 目录就绪: " + files.exists(tmp));
 log("Step3: 截图");
 var picPath = tmp + "/screenshot.png";
