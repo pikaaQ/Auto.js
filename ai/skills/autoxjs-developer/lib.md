@@ -94,3 +94,31 @@ let singletonRequirer = require('./lib/SingletonRequirer.js')(runtime, this)
 let { humanClickRect } = singletonRequirer('HumanClick')
 humanClickRect(region)
 ```
+
+#### 持久化存储：`LockableStorage`
+
+**源文件**：`lib/LockableStorage.js`
+
+底层使用 Android `SharedPreferences` + `.commit()`（同步写入，返回 boolean），适合多脚本互斥场景。
+
+| 方法 | 说明 |
+|------|------|
+| `LockableStorage.put(key, value)` | 写入字符串，返回 boolean 表示是否成功 |
+| `LockableStorage.get(key, defaultValue)` | 读取字符串，不存在返回 defaultValue |
+| `LockableStorage.clear()` | 清空所有数据 |
+| `lockableStorages.create(name)` | 创建/获取指定 name 的存储实例 |
+| `lockableStorages.remove(name)` | 创建实例并清空 |
+
+**用法**：
+
+```javascript
+let singletonRequirer = require('./lib/SingletonRequirer.js')(runtime, this)
+let { create } = singletonRequirer('LockableStorage')
+let storage = create('my_config')
+storage.put('key1', 'hello')
+let val = storage.get('key1')       // 'hello'
+let ok = storage.put('lock', '1')   // true=写入成功，false=被其他脚本锁住
+storage.clear()
+```
+
+**典型场景**：多脚本互斥锁（如 `RunningQueueDispatcher` 中的 `WRITE_LOCK_KEY` 争用）。`.commit()` 是阻塞同步的，能立即返回是否写入成功，而 `.apply()` 异步不返回结果。因此用 `.commit()` 做锁判断。`LockableStorage` 本身只负责读/写，锁的争用逻辑由调用方实现（如 `RunningQueueDispatcher.lock()`）。
