@@ -3,6 +3,7 @@
 页面探索工具 - Web 服务
 ======================
 全局常驻服务。手动探索 AutoX.js 页面，记录 OCR/DUMP 结果和页面跳转关系。
+项目路径由前端每次请求携带，服务端无状态。
 
 用法:
     python3 server.py --http-port 5000
@@ -22,39 +23,90 @@ from urllib.parse import urlparse, parse_qs
 
 SKILL_BASE_DIR = Path(__file__).resolve().parent.parent
 CONNECTOR_CALL = str(SKILL_BASE_DIR / "autoxjs-connector" / "call.py")
-CONNECTOR_PORT = 9317  # WebSocket 端口，控制端口自动推导为 +10000
+CONNECTOR_PORT = 9317
 DIR_PATH = "/storage/emulated/0/脚本"
 
-# 类级状态（跨请求持久化，SimpleHTTPRequestHandler 每次请求新建实例）
-_PROJECT_ROOT = None
-_CONNECTOR_PORT = None
-_DIR_PATH = None
-_PROJECTS_DIR = None
+# 服务级配置（跨请求持久化）
+_STATE = {
+    "connector_port": CONNECTOR_PORT,
+    "dir_path": DIR_PATH,
+    "projects_dir": None,
+}
 
 
 class ExploreHandler(SimpleHTTPRequestHandler):
 
-    def _project_root(self):
-        return _PROJECT_ROOT
+    def _get_project(self, req_data=None, query_params=None):
+        """从请求中获取项目路径：POST body 或 GET query"""
+        if req_data and isinstance(req_data, dict):
+            path = req_data.get("project_path", "")
+            if path:
+                return path
+        if query_params:
+            path = query_params.get("project_path", [None])[0]
+            if path:
+                return path
+        return None
 
-    def _set_project_root(self, path):
-        global _PROJECT_ROOT
-        _PROJECT_ROOT = path
+    def _flow_path(self, project_path):
+        return os.path.join(project_path, "docs", "flow.json")
 
-    def _connector_port(self):
-        return _CONNECTOR_PORT or CONNECTOR_PORT
+    def _explore_dir(self, project_path, page_id=None):
+        base = os.path.join(project_path, "docs", "explore")
+        if page_id:
+            return os.path.join(base, page_id)
+        return base
 
-    def _dir_path(self):
-        return _DIR_PATH or DIR_PATH
+    def _load_flow(self, project_path):
+        if not project_path:
+            return {"pages": []}
+        path = self._flow_path(project_path)
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        return {"pages": []}
 
-    def _projects_dir(self):
-        return _PROJECTS_DIR
+    def _save_flow(self, flow, project_path):
+        path = self._flow_path(project_path)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(flow, f, ensure_ascii=False, indent=2)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def _find_page(self, flow, page_id):
+        for p in flow.get("pages", []):
+            if p.get("id") == page_id:
+                return p
+        return None
 
-    def log_message(self, format, *args):
-        print(f"[{self.log_date_time_string()}] {format % args}")
+    def _scan_projects(self):
+        projects = []
+        pd = _STATE["projects_dir"]
+        if not pd or not os.path.isdir(pd):
+            return projects
+        for entry in os.listdir(pd):
+            path = os.path.join(pd, entry)
+            if not os.path.isdir(path) or entry.startswith("."):
+                continue
+            if (os.path.exists(os.path.join(path, "project.json")) or
+                os.path.exists(os.path.join(path, "lib")) or
+                os.path.exists(os.path.join(path, "actions")) or
+                os.path.exists(os.path.join(path, "docs"))):
+                projects.append({"name": entry, "path": path})
+        return projects
+
+    def _call_phone(self, cmd):
+        try:
+            result = subprocess.run(
+                [sys.executable, CONNECTOR_CALL, json.dumps(cmd), "--port", str(_STATE["connector_port"])],
+                capture_output=True, text=True, timeout=60
+            )
+            if result.returncode != 0:
+                return {"error": f"call.py 错误: {result.stderr}"}
+            return json.loads(result.stdout)
+        except subprocess.TimeoutExpired:
+            return {"error": "命令超时"}
+        except Exception as e:
+            return {"error": str(e)}
 
     def _send_json(self, data, status=200):
         self.send_response(status)
@@ -74,146 +126,130 @@ class ExploreHandler(SimpleHTTPRequestHandler):
     def _send_error(self, msg, status=400):
         self._send_json({"error": msg}, status)
 
-    def _call_phone(self, cmd: dict) -> dict:
-        try:
-            result = subprocess.run(
-                [sys.executable, CONNECTOR_CALL, json.dumps(cmd), "--port", str(self._connector_port())],
-                capture_output=True, text=True, timeout=60
-            )
-            if result.returncode != 0:
-                return {"error": f"call.py 错误: {result.stderr}"}
-            return json.loads(result.stdout)
-        except subprocess.TimeoutExpired:
-            return {"error": "命令超时"}
-        except Exception as e:
-            return {"error": str(e)}
+    def _generate_explore_script(self, page_id):
+        dp = _STATE["dir_path"]
+        return f'''"autojs";
+var pageId = "{page_id}";
+var exploreDir = "{dp}/docs/explore/" + pageId;
+files.ensureDir(exploreDir);
+var proto = Object.getPrototypeOf($shizuku);
+if (!proto.isRunning()) {{
+  proto.requestPermission(); sleep(2000);
+  if (!proto.isRunning()) {{
+    var clazz = proto.getClass();
+    var bindMethod = clazz.getDeclaredMethod("bindUserService");
+    bindMethod.setAccessible(true); bindMethod.invoke(proto); sleep(3000);
+  }}
+}}
+if (!proto.isRunning()) {{ files.write(exploreDir + "/done.txt", "shizuku_failed"); exit(); }}
+var picPath = exploreDir + "/screenshot.png";
+var result = $shizuku("screencap -p " + picPath);
+if (result.code !== 0) {{
+  files.write(exploreDir + "/error.txt", "截图失败: " + result.error);
+  files.write(exploreDir + "/done.txt", "error"); exit();
+}}
+var img = images.read(picPath);
+if (img) {{
+  var raw = $mlKitOcr.detect(img);
+  var ocrList = [];
+  for (var i = 0; i < (raw ? raw.length : 0); i++) {{
+    ocrList.push({{
+      label: raw[i].label,
+      bounds: {{ left: raw[i].bounds.left, top: raw[i].bounds.top, right: raw[i].bounds.right, bottom: raw[i].bounds.bottom }}
+    }});
+  }}
+  files.write(exploreDir + "/ocr.json", JSON.stringify(ocrList));
+  img.recycle();
+}}
+var xml = UiSelector.dump();
+if (xml) {{ files.write(exploreDir + "/dump.xml", xml); }}
+files.write(exploreDir + "/done.txt", "ok");
+log("=== 探索完毕: " + pageId + " ===");
+'''
 
-    def _flow_path(self):
-        return os.path.join(self._project_root(), "docs", "flow.json")
+    def _pull_explore_results(self, page_id, project_path):
+        time.sleep(5)
+        local_dir = self._explore_dir(project_path, page_id)
+        os.makedirs(local_dir, exist_ok=True)
+        phone_dir = f"{_STATE['dir_path']}/docs/explore/{page_id}"
+        for fname in ["done.txt", "screenshot.png", "ocr.json", "dump.xml", "error.txt"]:
+            cmd = {"cmd": "pull_file", "path": f"{phone_dir}/{fname}", "local_path": local_dir}
+            resp = self._call_phone(cmd)
+            if resp.get("success") and os.path.exists(os.path.join(local_dir, fname)):
+                print(f"  ✓ 已拉取 {fname}")
+            else:
+                print(f"  - 无 {fname}")
+        flow = self._load_flow(project_path)
+        page = self._find_page(flow, page_id)
+        if page:
+            page["explored"] = True
+            self._save_flow(flow, project_path)
+        print(f"  ✓ 探索 {page_id} 完成")
 
-    def _explore_dir(self, page_id=None):
-        base = os.path.join(self._project_root(), "docs", "explore")
-        if page_id:
-            return os.path.join(base, page_id)
-        return base
+    def log_message(self, format, *args):
+        print(f"[{self.log_date_time_string()}] {format % args}")
 
-    def _load_flow(self) -> dict:
-        if not self._project_root():
-            return {"pages": []}
-        path = self._flow_path()
-        if os.path.exists(path):
-            with open(path, encoding="utf-8") as f:
-                return json.load(f)
-        return {"pages": []}
-
-    def _save_flow(self, flow: dict):
-        path = self._flow_path()
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(flow, f, ensure_ascii=False, indent=2)
-
-    def _find_page(self, flow: dict, page_id: str) -> dict | None:
-        for p in flow.get("pages", []):
-            if p.get("id") == page_id:
-                return p
-        return None
-
-    def _scan_projects(self) -> list:
-        """扫描 projects_dir 下所有可能的项目"""
-        projects = []
-        if not self._projects_dir() or not os.path.isdir(self._projects_dir()):
-            return projects
-        for entry in os.listdir(self._projects_dir()):
-            path = os.path.join(self._projects_dir(), entry)
-            if not os.path.isdir(path) or entry.startswith("."):
-                continue
-            # 检测是否为 AutoX.js 项目（有 project.json 或 lib/ 或 actions/）
-            if (os.path.exists(os.path.join(path, "project.json")) or
-                os.path.exists(os.path.join(path, "lib")) or
-                os.path.exists(os.path.join(path, "actions")) or
-                os.path.exists(os.path.join(path, "docs"))):
-                projects.append({
-                    "name": entry,
-                    "path": path,
-                })
-        return projects
+    # ─── GET ──────────────────────────────────────────
 
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        qs = parse_qs(parsed.query)
 
-        # 项目选择
         if path == "/api/projects":
-            projects = self._scan_projects()
-            current = self._project_root()
-            self._send_json({
-                "projects": projects,
-                "current": current,
-            })
-
-        elif path == "/api/projects/current":
-            self._send_json({
-                "project_root": self._project_root(),
-                "project_name": os.path.basename(self._project_root()) if self._project_root() else None,
-            })
+            self._send_json({"projects": self._scan_projects()})
 
         elif path == "/api/flow":
-            if not self._project_root():
-                self._send_error("请先选择项目", 400)
+            project = self._get_project(query_params=qs)
+            if not project:
+                self._send_error("缺少 project_path")
                 return
-            flow = self._load_flow()
-            self._send_json(flow)
+            self._send_json(self._load_flow(project))
 
         elif path == "/api/explore/pages":
-            if not self._project_root():
-                self._send_error("请先选择项目", 400)
+            project = self._get_project(query_params=qs)
+            if not project:
+                self._send_error("缺少 project_path")
                 return
-            flow = self._load_flow()
+            flow = self._load_flow(project)
             page_list = []
             for p in flow.get("pages", []):
-                page_dir = os.path.join(self._explore_dir(), p["id"])
-                has_result = os.path.exists(os.path.join(page_dir, "screenshot.png"))
+                has = os.path.exists(os.path.join(self._explore_dir(project, p["id"]), "screenshot.png"))
                 page_list.append({
-                    "id": p["id"],
-                    "name": p.get("name", p["id"]),
-                    "explored": has_result,
-                    "transition_count": len(p.get("transitions", [])),
+                    "id": p["id"], "name": p.get("name", p["id"]),
+                    "explored": has, "transition_count": len(p.get("transitions", [])),
                 })
             self._send_json(page_list)
 
         elif path.startswith("/api/explore/") and path.endswith("/result"):
             page_id = path.split("/")[3]
-            page_dir = self._explore_dir(page_id)
+            project = self._get_project(query_params=qs)
+            if not project:
+                self._send_error("缺少 project_path")
+                return
+            page_dir = self._explore_dir(project, page_id)
             if not os.path.exists(page_dir):
                 self._send_error("页面尚未探索", 404)
                 return
             result = {"page_id": page_id, "files": {}}
-            for fname in ["screenshot.png", "ocr.json", "dump.xml"]:
-                fpath = os.path.join(page_dir, fname)
-                result["files"][fname] = os.path.exists(fpath)
-
-            ocr_path = os.path.join(page_dir, "ocr.json")
-            if os.path.exists(ocr_path):
-                with open(ocr_path, encoding="utf-8") as f:
-                    result["ocr"] = json.load(f)
-            else:
-                result["ocr"] = []
-
-            dump_path = os.path.join(page_dir, "dump.xml")
-            if os.path.exists(dump_path):
-                with open(dump_path, encoding="utf-8") as f:
-                    result["dump"] = f.read()
-            else:
-                result["dump"] = ""
-
-            flow = self._load_flow()
+            for f in ["screenshot.png", "ocr.json", "dump.xml"]:
+                result["files"][f] = os.path.exists(os.path.join(page_dir, f))
+            ocr_p = os.path.join(page_dir, "ocr.json")
+            result["ocr"] = json.load(open(ocr_p, encoding="utf-8")) if os.path.exists(ocr_p) else []
+            dump_p = os.path.join(page_dir, "dump.xml")
+            result["dump"] = open(dump_p, encoding="utf-8").read() if os.path.exists(dump_p) else ""
+            flow = self._load_flow(project)
             page = self._find_page(flow, page_id)
             result["transitions"] = page.get("transitions", []) if page else []
             self._send_json(result)
 
         elif path.startswith("/api/explore/") and path.endswith("/screenshot.png"):
             page_id = path.split("/")[3]
-            fpath = os.path.join(self._explore_dir(page_id), "screenshot.png")
+            project = self._get_project(query_params=qs)
+            if not project:
+                self._send_error("缺少 project_path")
+                return
+            fpath = os.path.join(self._explore_dir(project, page_id), "screenshot.png")
             if os.path.exists(fpath):
                 self._send_file(fpath, "image/png")
             else:
@@ -221,193 +257,129 @@ class ExploreHandler(SimpleHTTPRequestHandler):
 
         elif path == "/api/config":
             self._send_json({
-                "dir_path": self._dir_path(),
-                "connector_port": self._connector_port(),
-                "project_root": self._project_root(),
+                "dir_path": _STATE["dir_path"],
+                "connector_port": _STATE["connector_port"],
             })
 
         elif path == "/" or path == "/index.html":
-            static_dir = os.path.join(os.path.dirname(__file__), "static")
-            index_path = os.path.join(static_dir, "index.html")
-            if os.path.exists(index_path):
-                self._send_file(index_path, "text/html; charset=utf-8")
+            p = os.path.join(os.path.dirname(__file__), "static", "index.html")
+            if os.path.exists(p):
+                self._send_file(p, "text/html; charset=utf-8")
             else:
                 self._send_error("index.html not found", 404)
 
         elif path.startswith("/static/"):
-            static_dir = os.path.join(os.path.dirname(__file__), "static")
-            fpath = os.path.join(static_dir, path[8:])
-            if os.path.exists(fpath):
-                ext = os.path.splitext(fpath)[1]
-                mime = {
-                    ".html": "text/html; charset=utf-8",
-                    ".js": "application/javascript; charset=utf-8",
-                    ".css": "text/css; charset=utf-8",
-                    ".png": "image/png",
-                    ".svg": "image/svg+xml",
-                }.get(ext, "application/octet-stream")
-                self._send_file(fpath, mime)
+            p = os.path.join(os.path.dirname(__file__), "static", path[8:])
+            if os.path.exists(p):
+                ext = os.path.splitext(p)[1]
+                mime = {".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8",
+                        ".css": "text/css; charset=utf-8", ".png": "image/png", ".svg": "image/svg+xml"}.get(ext, "application/octet-stream")
+                self._send_file(p, mime)
             else:
                 self._send_error("文件不存在", 404)
         else:
             self._send_error("未知路由", 404)
 
+    # ─── POST ─────────────────────────────────────────
+
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
-        content_length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_length).decode() if content_length > 0 else "{}"
+        cl = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(cl).decode() if cl > 0 else "{}"
         try:
             data = json.loads(body)
         except json.JSONDecodeError:
             self._send_error("JSON 解析失败")
             return
 
-        if path == "/api/projects/select":
-            project_path = data.get("path", "")
-            if not os.path.isdir(project_path):
-                self._send_error("项目路径不存在")
-                return
-            self._set_project_root(project_path)
-            os.makedirs(self._explore_dir(), exist_ok=True)
-            self._send_json({
-                "status": "ok",
-                "project_root": self._project_root(),
-                "project_name": os.path.basename(project_path),
-            })
-
-        elif path == "/api/explore":
-            if not self._project_root():
-                self._send_error("请先选择项目")
-                return
+        if path == "/api/explore":
             page_id = data.get("page_id", "")
-            if not page_id:
-                self._send_error("缺少 page_id")
+            project = self._get_project(data)
+            if not page_id or not project:
+                self._send_error("缺少 page_id 或 project_path")
                 return
-
-            flow = self._load_flow()
-            page = self._find_page(flow, page_id)
-            page_name = page.get("name", page_id) if page else page_id
-
             script = self._generate_explore_script(page_id)
-            if not script:
-                self._send_error("脚本生成失败")
-                return
-
-            cmd = {
-                "cmd": "run",
-                "name": f"_explore_{page_id}.js",
-                "script": script,
-                "wait": False,
-            }
-            resp = self._call_phone(cmd)
+            resp = self._call_phone({"cmd": "run", "name": f"_explore_{page_id}.js", "script": script, "wait": False})
             if resp.get("error"):
                 self._send_error(resp["error"])
                 return
-
-            self._send_json({
-                "status": "running",
-                "page_id": page_id,
-                "message": f"探索 {page_name} 中...",
-            })
-
-            thread = threading.Thread(
-                target=self._pull_explore_results,
-                args=(page_id,),
-                daemon=True,
-            )
-            thread.start()
+            self._send_json({"status": "running", "page_id": page_id})
+            threading.Thread(target=self._pull_explore_results, args=(page_id, project), daemon=True).start()
 
         elif path == "/api/explore/poll":
             page_id = data.get("page_id", "")
-            done_path = os.path.join(self._explore_dir(page_id), "done.txt")
+            project = self._get_project(data)
+            if not project:
+                self._send_error("缺少 project_path")
+                return
+            done_path = os.path.join(self._explore_dir(project, page_id), "done.txt")
             if os.path.exists(done_path):
                 with open(done_path) as f:
-                    status = f.read().strip()
-                self._send_json({"status": status, "page_id": page_id})
+                    self._send_json({"status": f.read().strip(), "page_id": page_id})
             else:
                 self._send_json({"status": "running", "page_id": page_id})
 
         elif path == "/api/flow/transition":
-            if not self._project_root():
-                self._send_error("请先选择项目")
+            project = self._get_project(data)
+            if not project:
+                self._send_error("缺少 project_path")
                 return
             page_id = data.get("page_id", "")
             target_id = data.get("target_id", "")
-            method = data.get("method", "ocr")
-            label = data.get("label", "")
-            bounds = data.get("bounds")
-
             if not page_id or not target_id:
                 self._send_error("缺少 page_id 或 target_id")
                 return
-
-            flow = self._load_flow()
+            flow = self._load_flow(project)
             page = self._find_page(flow, page_id)
             if not page:
                 self._send_error(f"页面 {page_id} 不存在")
                 return
-
-            transition = {
-                "target": target_id,
-                "method": method,
-                "label": label,
-            }
-            if bounds:
-                transition["bounds"] = bounds
-
-            if "transitions" not in page:
-                page["transitions"] = []
-            page["transitions"].append(transition)
-            self._save_flow(flow)
-            self._send_json({"status": "ok", "transition": transition})
+            t = {"target": target_id, "method": data.get("method", "ocr"), "label": data.get("label", "")}
+            if data.get("bounds"):
+                t["bounds"] = data["bounds"]
+            page.setdefault("transitions", []).append(t)
+            self._save_flow(flow, project)
+            self._send_json({"status": "ok", "transition": t})
 
         elif path == "/api/flow/page":
-            if not self._project_root():
-                self._send_error("请先选择项目")
+            project = self._get_project(data)
+            if not project:
+                self._send_error("缺少 project_path")
                 return
             page_id = data.get("id", "")
-            page_name = data.get("name", page_id)
-            description = data.get("description", "")
-
             if not page_id:
                 self._send_error("缺少 id")
                 return
-
-            flow = self._load_flow()
+            flow = self._load_flow(project)
             if self._find_page(flow, page_id):
                 self._send_error(f"页面 {page_id} 已存在")
                 return
-
-            flow["pages"].append({
-                "id": page_id,
-                "name": page_name,
-                "description": description,
-                "transitions": [],
-            })
-            self._save_flow(flow)
+            flow["pages"].append({"id": page_id, "name": data.get("name", page_id), "description": data.get("description", ""), "transitions": []})
+            self._save_flow(flow, project)
             self._send_json({"status": "ok"})
 
         else:
             self._send_error("未知路由", 404)
 
+    # ─── PUT ──────────────────────────────────────────
+
     def do_PUT(self):
-        parsed = urlparse(self.path)
-        path = parsed.path
-        content_length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_length).decode() if content_length > 0 else "{}"
+        cl = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(cl).decode() if cl > 0 else "{}"
         try:
             data = json.loads(body)
         except json.JSONDecodeError:
             self._send_error("JSON 解析失败")
             return
 
-        if path == "/api/flow":
-            if not self._project_root():
-                self._send_error("请先选择项目")
+        if parsed_path(self.path) == "/api/flow":
+            project = self._get_project(data)
+            if not project:
+                self._send_error("缺少 project_path")
                 return
             if "pages" in data:
-                self._save_flow(data)
+                self._save_flow(data, project)
                 self._send_json({"status": "ok"})
             else:
                 self._send_error("无效的 flow 数据")
@@ -421,119 +393,31 @@ class ExploreHandler(SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
-    def _generate_explore_script(self, page_id: str) -> str:
-        dir_path = self._dir_path()
-        return f'''"autojs";
-var pageId = "{page_id}";
-var exploreDir = "{dir_path}/docs/explore/" + pageId;
-files.ensureDir(exploreDir);
 
-var proto = Object.getPrototypeOf($shizuku);
-if (!proto.isRunning()) {{
-  proto.requestPermission();
-  sleep(2000);
-  if (!proto.isRunning()) {{
-    var clazz = proto.getClass();
-    var bindMethod = clazz.getDeclaredMethod("bindUserService");
-    bindMethod.setAccessible(true);
-    bindMethod.invoke(proto);
-    sleep(3000);
-  }}
-}}
-if (!proto.isRunning()) {{
-  files.write(exploreDir + "/done.txt", "shizuku_failed");
-  exit();
-}}
-
-var picPath = exploreDir + "/screenshot.png";
-var result = $shizuku("screencap -p " + picPath);
-if (result.code !== 0) {{
-  files.write(exploreDir + "/error.txt", "截图失败: " + result.error);
-  files.write(exploreDir + "/done.txt", "error");
-  exit();
-}}
-
-var img = images.read(picPath);
-if (img) {{
-  var raw = $mlKitOcr.detect(img);
-  var ocrList = [];
-  for (var i = 0; i < (raw ? raw.length : 0); i++) {{
-    ocrList.push({{
-      label: raw[i].label,
-      bounds: {{
-        left: raw[i].bounds.left,
-        top: raw[i].bounds.top,
-        right: raw[i].bounds.right,
-        bottom: raw[i].bounds.bottom
-      }}
-    }});
-  }}
-  files.write(exploreDir + "/ocr.json", JSON.stringify(ocrList));
-  img.recycle();
-}}
-
-var xml = UiSelector.dump();
-if (xml) {{
-  files.write(exploreDir + "/dump.xml", xml);
-}}
-
-files.write(exploreDir + "/done.txt", "ok");
-log("=== 探索完毕: " + pageId + " ===");
-'''
-
-    def _pull_explore_results(self, page_id: str):
-        time.sleep(5)
-        local_dir = self._explore_dir(page_id)
-        os.makedirs(local_dir, exist_ok=True)
-        phone_dir = f"{self._dir_path()}/docs/explore/{page_id}"
-
-        for fname in ["done.txt", "screenshot.png", "ocr.json", "dump.xml", "error.txt"]:
-            phone_path = f"{phone_dir}/{fname}"
-            local_path = os.path.join(local_dir, fname)
-            cmd = {"cmd": "pull_file", "path": phone_path, "local_path": local_dir}
-            resp = self._call_phone(cmd)
-            if resp.get("success") and os.path.exists(local_path):
-                print(f"  ✓ 已拉取 {fname}")
-            else:
-                print(f"  - 无 {fname}")
-
-        flow = self._load_flow()
-        page = self._find_page(flow, page_id)
-        if page:
-            page["explored"] = True
-            self._save_flow(flow)
-        print(f"  ✓ 探索 {page_id} 完成")
+def parsed_path(url):
+    return urlparse(url).path
 
 
 def main():
     parser = argparse.ArgumentParser(description="AutoX.js 页面探索工具")
     parser.add_argument("--projects-dir", default=".", help="项目目录扫描根目录")
     parser.add_argument("--connector-port", type=int, default=CONNECTOR_PORT,
-                        help=f"Connector WebSocket 端口 (默认 {CONNECTOR_PORT}，控制端口自动推导)")
+                        help=f"Connector WebSocket 端口 (默认 {CONNECTOR_PORT})")
     parser.add_argument("--dir-path", default=DIR_PATH, help="手机脚本根目录")
     parser.add_argument("--http-port", type=int, default=5000, help="Web 服务端口")
     args = parser.parse_args()
 
-    global _CONNECTOR_PORT, _DIR_PATH, _PROJECTS_DIR
-    _CONNECTOR_PORT = args.connector_port
-    _DIR_PATH = args.dir_path
-    _PROJECTS_DIR = os.path.abspath(args.projects_dir)
+    _STATE["connector_port"] = args.connector_port
+    _STATE["dir_path"] = args.dir_path
+    _STATE["projects_dir"] = os.path.abspath(args.projects_dir)
 
-    projects_dir = _PROJECTS_DIR
-    print(f"📁 项目扫描目录: {projects_dir}")
-    print(f"📱 手机脚本目录: {args.dir_path}")
-    print(f"🔌 Connector 端口: {args.connector_port} (WebSocket) / {args.connector_port + 10000} (控制)")
+    print(f"📁 项目扫描目录: {_STATE['projects_dir']}")
+    print(f"📱 手机脚本目录: {_STATE['dir_path']}")
+    print(f"🔌 Connector 端口: {_STATE['connector_port']}")
     print(f"🌐 Web 服务: http://localhost:{args.http_port}")
-    print(f"💡 启动后打开浏览器，选择项目开始探索")
+    print(f"💡 打开浏览器，选择项目开始探索")
 
-    # 启动 HTTP 服务
     server = HTTPServer(("0.0.0.0", args.http_port), ExploreHandler)
-
-    handler = ExploreHandler
-    handler.connector_port = args.connector_port
-    handler.dir_path = args.dir_path
-    handler.projects_dir = projects_dir
-
     try:
         server.serve_forever()
     except KeyboardInterrupt:

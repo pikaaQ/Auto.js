@@ -5,10 +5,25 @@
  * 用法：复制此文件，修改 TODO 部分，通过 run 指令推送执行。
  * 注意：此脚本为单脚本推送，不能使用 lib/ 下的模块，所有代码必须内联。
  *
+ * 输出：结果写入指定路径的 JSON 文件，结构如下：
+ *   {
+ *     "screenshot": "tmp/diag.png",
+ *     "ocr": [ { "label": "...", "bounds": {...} } ],
+ *     "components": {
+ *       "clickable": [ ... ],
+ *       "textNodes": [ ... ],
+ *       "descNodes": [ ... ],
+ *       "classSummary": { "android.widget.TextView": 10, ... }
+ *     }
+ *   }
+ *
  * 筛选逻辑参考 AutoScriptBase 控件可视化工具（控件可视化/index.html）：
  * 多维度筛选链路：可见性(visibleOnly) → 内容(hasContent) → 在屏(inScreen) → 属性(filterFunc)
  * 替代仅依赖单一 className 匹配的不完整方式。
  */
+
+// TODO: 输出 JSON 文件路径
+var OUTPUT_PATH = files.cwd() + "/tmp/explore_result.json";
 
 log("=== 开始 ===");
 
@@ -38,6 +53,10 @@ if (!proto.isRunning()) {
 log("✓ Shizuku 已绑定");
 
 var tmpDir = files.cwd() + "/tmp";
+// 清空 tmp 目录，确保每次执行结果独立
+if (files.exists(tmpDir)) {
+  files.removeDir(tmpDir);
+}
 if (!files.exists(tmpDir)) {
   files.ensureDir(tmpDir);
 }
@@ -58,11 +77,17 @@ if (!img) {
 }
 var raw = $mlKitOcr.detect(img);
 log("OCR 结果数量: %d", raw ? raw.length : 0);
+var ocrResults = [];
 for (var i = 0; i < (raw ? raw.length : 0); i++) {
-  log("OCR[%d]: label=%s bounds=[%d,%d,%d,%d]",
-    i, raw[i].label,
-    raw[i].bounds.left, raw[i].bounds.top,
-    raw[i].bounds.right, raw[i].bounds.bottom);
+  ocrResults.push({
+    label: raw[i].label,
+    bounds: {
+      left: raw[i].bounds.left,
+      top: raw[i].bounds.top,
+      right: raw[i].bounds.right,
+      bottom: raw[i].bounds.bottom
+    }
+  });
 }
 img.recycle();
 
@@ -70,6 +95,7 @@ img.recycle();
 // 参考控件可视化工具的筛选链路：
 //   visibleOnly (可见性) → hasContent (内容) → inScreen (在屏) → filterFunc (属性)
 // 按维度依次输出，替代原仅查 className("android.widget.Button") 的单一方式。
+var components = {};
 var xml = UiSelector.dump();
 if (xml) {
   log("=== 组件树关键节点 ===");
@@ -78,30 +104,44 @@ if (xml) {
   log("--- 可见·可点击节点 ---");
   var clickableNodes = visibleToUser(true).clickable(true).find();
   log("可点击可见组件数量: %d", clickableNodes.size());
+  components.clickable = [];
   for (var j = 0; j < clickableNodes.size(); j++) {
     var w = clickableNodes.get(j);
-    log("  clickable[%d]: className=%s desc=%s text=%s bounds=%s",
-      j, w.className(), w.desc(), w.text(), JSON.stringify(w.bounds()));
+    var info = {
+      className: w.className(),
+      desc: w.desc(),
+      text: w.text(),
+      bounds: w.bounds()
+    };
+    components.clickable.push(info);
   }
 
   // 维度2: 可见 + 有文本内容（类似 hasContent 筛选）
   log("--- 可见·有文本节点 ---");
   var textNodes = visibleToUser(true).textMatches(".+").find();
   log("有文本节点数量: %d", textNodes.size());
+  components.textNodes = [];
   for (var j = 0; j < textNodes.size(); j++) {
     var w = textNodes.get(j);
-    log("  text[%d]: className=%s text=%s bounds=%s",
-      j, w.className(), w.text(), JSON.stringify(w.bounds()));
+    components.textNodes.push({
+      className: w.className(),
+      text: w.text(),
+      bounds: w.bounds()
+    });
   }
 
   // 维度3: 可见 + 有描述内容（desc）
   log("--- 可见·有desc节点 ---");
   var descNodes = visibleToUser(true).descMatches(".+").find();
   log("有desc节点数量: %d", descNodes.size());
+  components.descNodes = [];
   for (var j = 0; j < descNodes.size(); j++) {
     var w = descNodes.get(j);
-    log("  desc[%d]: className=%s desc=%s bounds=%s",
-      j, w.className(), w.desc(), JSON.stringify(w.bounds()));
+    components.descNodes.push({
+      className: w.className(),
+      desc: w.desc(),
+      bounds: w.bounds()
+    });
   }
 
   // 维度4: 可见控件按 className 分类汇总（了解页面组件构成，方便定位目标）
@@ -112,12 +152,16 @@ if (xml) {
     var cn = allVisible.get(j).className();
     classSummary[cn] = (classSummary[cn] || 0) + 1;
   }
-  var sortedClasses = Object.keys(classSummary).sort(function (a, b) {
-    return classSummary[b] - classSummary[a];
-  });
-  for (var k = 0; k < sortedClasses.length; k++) {
-    log("  %s: %d个", sortedClasses[k], classSummary[sortedClasses[k]]);
-  }
+  components.classSummary = classSummary;
 }
+
+// ─── 5. 写入 JSON 文件 ───────────────────────────────
+var output = {
+  screenshot: picPath,
+  ocr: ocrResults,
+  components: components
+};
+files.write(OUTPUT_PATH, JSON.stringify(output, null, 2));
+log("✓ 结果已保存到: " + OUTPUT_PATH);
 
 log("=== 完毕 ===");
