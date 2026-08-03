@@ -56,8 +56,13 @@ cp -r ${skill_base_dir}/autoxjs-developer ~/.config/opencode/skills/
 │   ├── readme.md             ← 项目说明
 │   ├── flow.md               ← 流程步骤描述
 │   ├── dev_tools.md          ← 开发工具使用说明
-│   └── pages/                ← 页面分析记录
+│   └── pages/                ← 页面分析总结文档
 │       └── 页面名.md
+│   └── explore/              ← 页面探索原始记录
+│       └── 页面名
+│            └── shot1.png    ← 截图1
+│            └── orc1.txt     ← ocr结果1
+│            └── dump1.txt    ← dump中的组件列表1
 ├── devtools/                 ← 开发工具脚本（不推送至手机）
 ├── test/                     ← 单元测试脚本
 ├── phone_data/               ← 从手机拉取的文件（日志、截图等，不推送至手机）
@@ -123,6 +128,7 @@ echo "脚本根目录: $DIR_PATH"   # 记下来，后续复用
 - release 构建 → `autojs-log4j.txt`
 
 <a id="id-协同指令和脚本anchor"></a>
+
 ### 与手机协同的指令和脚本
 
 #### 推送并直接执行（不会保存到手机）
@@ -243,7 +249,7 @@ $CALL "{\"cmd\":\"pull_file\",\"path\":\"{dir_path}/.logs/autojs-log4j.txt\",\"l
 4. **Dump 组件树**：获取当前界面 UI 组件树 XML，分析组件的 className、desc、text、bounds、clickable 等属性
 
 
-同一页面，将该脚本逻辑执行多次，获得尽可能全部可能的OCR结果和组件树dump结果。待脚本执行完成后，结合 OCR 结果和组件树信息，分析当前页面，并在docs目录下记录页面文档信息。
+同一页面，将该脚本逻辑执行多次(一般在进入后依次间隔500ms 1s 3s秒各执行一次,执行3次,以判断开屏广告,开屏弹窗,加载等待等各种状态)，获得尽可能全部可能的OCR结果和组件树dump结果。每执行依次, 将探索过程获取的截图/OCR/DUMP结果都保存到对应页面的探索文档目录下( `/docs/explore/页面/`), 待脚本多次执行完成后，结合多次 OCR 结果和组件树信息，分析当前页面，并在docs目录下记录页面文档信息。
 **如果上述方式分析出的信息无法达成流程要求，可以在申请用户同意后，将截图拉取到项目中，使用look_at分析图片，这种操作必须申请用户同意后才可实施。**
 
 #### 如何验证
@@ -252,6 +258,31 @@ $CALL "{\"cmd\":\"pull_file\",\"path\":\"{dir_path}/.logs/autojs-log4j.txt\",\"l
 2. 进入操作的前置页面
 3. 执行单元操作
 4. 截图 + mlkocr + dump组件树（方案同探索中的2、3），判断操作后的页面和页面组件是否和预期一致。
+
+### 探索工具（手动快速探索）
+
+`devtools/explorer/` 提供了一个 Web 工具，用于手动快速探索页面并记录结果，适合需要大批量页面探索的场景。
+
+**启动：**
+```bash
+python3 ${skill_base_dir}/autoxjs-developer/sample-project/devtools/explorer/server.py \\
+  --project /path/to/your/project --port 9317 --http-port 5000
+```
+
+**功能：**
+1. 在 `flow.json` 中定义所有需探索的页面及跳转关系
+2. 在 Web 页面（`http://localhost:5000`）上选择页面 → 点击「探索」→ 自动执行 Shizuku 截图 + OCR + Dump
+3. 探索结果（截图、OCR、Dump）保存在 `explore/{页面ID}/` 目录
+4. 在页面上切换 OCR/DUMP 叠加层，查看组件识别结果
+5. 点击组件标注跳转，自动记录到 `flow.json`
+
+**流程：**
+1. 先规划探索流程，通过「+ 添加页面」添加所有待探索页面
+2. 选择一个页面，在手机上手动进入该页面，点击「探索」
+3. 等待探索完成，查看截图和 OCR/DUMP 结果
+4. 点击组件标注跳转目标页面
+5. 重复 2-4 直到所有页面探索完毕
+6. `flow.json` 和 `explore/` 目录可供 AI 后续分析使用
 
 
 ### 开发要求与约定：

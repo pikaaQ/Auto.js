@@ -4,6 +4,10 @@
  * ================
  * 用法：复制此文件，修改 TODO 部分，通过 run 指令推送执行。
  * 注意：此脚本为单脚本推送，不能使用 lib/ 下的模块，所有代码必须内联。
+ *
+ * 筛选逻辑参考 AutoScriptBase 控件可视化工具（控件可视化/index.html）：
+ * 多维度筛选链路：可见性(visibleOnly) → 内容(hasContent) → 在屏(inScreen) → 属性(filterFunc)
+ * 替代仅依赖单一 className 匹配的不完整方式。
  */
 
 log("=== 开始 ===");
@@ -62,19 +66,57 @@ for (var i = 0; i < (raw ? raw.length : 0); i++) {
 }
 img.recycle();
 
-// ─── 4. Dump 组件树 ─────────────────────────────────
+// ─── 4. Dump 组件树 + 多维度筛选 ────────────────────
+// 参考控件可视化工具的筛选链路：
+//   visibleOnly (可见性) → hasContent (内容) → inScreen (在屏) → filterFunc (属性)
+// 按维度依次输出，替代原仅查 className("android.widget.Button") 的单一方式。
 var xml = UiSelector.dump();
 if (xml) {
-  // 输出关键组件信息（desc/text/className/bounds/clickable）
   log("=== 组件树关键节点 ===");
-  // TODO: 根据实际需要解析 XML 或使用选择器查找关键组件
-  // 示例：查找所有可点击的组件
-  var clickables = className("android.widget.Button").find();
-  log("可点击按钮数量: %d", clickables.size());
-  for (var j = 0; j < clickables.size(); j++) {
-    var w = clickables.get(j);
-    log("  Button[%d]: desc=%s text=%s bounds=%s",
-      j, w.desc(), w.text(), JSON.stringify(w.bounds()));
+
+  // 维度1: 可见 + 可点击（不限于 Button，含 ImageView/TextView/View 等可点击节点）
+  log("--- 可见·可点击节点 ---");
+  var clickableNodes = visibleToUser(true).clickable(true).find();
+  log("可点击可见组件数量: %d", clickableNodes.size());
+  for (var j = 0; j < clickableNodes.size(); j++) {
+    var w = clickableNodes.get(j);
+    log("  clickable[%d]: className=%s desc=%s text=%s bounds=%s",
+      j, w.className(), w.desc(), w.text(), JSON.stringify(w.bounds()));
+  }
+
+  // 维度2: 可见 + 有文本内容（类似 hasContent 筛选）
+  log("--- 可见·有文本节点 ---");
+  var textNodes = visibleToUser(true).textMatches(".+").find();
+  log("有文本节点数量: %d", textNodes.size());
+  for (var j = 0; j < textNodes.size(); j++) {
+    var w = textNodes.get(j);
+    log("  text[%d]: className=%s text=%s bounds=%s",
+      j, w.className(), w.text(), JSON.stringify(w.bounds()));
+  }
+
+  // 维度3: 可见 + 有描述内容（desc）
+  log("--- 可见·有desc节点 ---");
+  var descNodes = visibleToUser(true).descMatches(".+").find();
+  log("有desc节点数量: %d", descNodes.size());
+  for (var j = 0; j < descNodes.size(); j++) {
+    var w = descNodes.get(j);
+    log("  desc[%d]: className=%s desc=%s bounds=%s",
+      j, w.className(), w.desc(), JSON.stringify(w.bounds()));
+  }
+
+  // 维度4: 可见控件按 className 分类汇总（了解页面组件构成，方便定位目标）
+  log("--- 可见控件按类型汇总 ---");
+  var allVisible = visibleToUser(true).find();
+  var classSummary = {};
+  for (var j = 0; j < allVisible.size(); j++) {
+    var cn = allVisible.get(j).className();
+    classSummary[cn] = (classSummary[cn] || 0) + 1;
+  }
+  var sortedClasses = Object.keys(classSummary).sort(function (a, b) {
+    return classSummary[b] - classSummary[a];
+  });
+  for (var k = 0; k < sortedClasses.length; k++) {
+    log("  %s: %d个", sortedClasses[k], classSummary[sortedClasses[k]]);
   }
 }
 

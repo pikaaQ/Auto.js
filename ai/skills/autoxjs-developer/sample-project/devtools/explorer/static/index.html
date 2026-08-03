@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoX.js 页面探索工具</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>📱 页面探索工具</h1>
+    <div class="header-actions">
+      <span id="connector-status" class="status-dot unknown"></span>
+      <button onclick="addPage()">+ 添加页面</button>
+      <button onclick="exportFlow()">导出 flow.json</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <!-- 左侧：页面列表 -->
+    <aside class="sidebar">
+      <h2>探索计划</h2>
+      <div id="page-list" class="page-list"></div>
+    </aside>
+
+    <!-- 中间：截图 + 叠加层 -->
+    <main class="content">
+      <div id="page-detail" class="page-detail">
+        <div class="detail-header">
+          <h2 id="detail-title">选择一个页面开始探索</h2>
+          <div class="detail-actions">
+            <button id="btn-explore" onclick="explorePage()" disabled>🚀 探索</button>
+            <button id="btn-refresh" onclick="refreshResult()" disabled>🔄 刷新</button>
+          </div>
+        </div>
+
+        <div class="canvas-container" id="canvas-container">
+          <div class="placeholder" id="placeholder">
+            <p>选择左侧页面，点击「探索」按钮</p>
+            <p>探索完成后截图将在此显示</p>
+          </div>
+          <div id="image-wrapper" style="display:none; position:relative;">
+            <img id="screenshot-img" crossorigin="anonymous">
+            <canvas id="overlay-canvas"></canvas>
+          </div>
+        </div>
+
+        <!-- 工具条 -->
+        <div class="toolbar" id="toolbar" style="display:none;">
+          <label class="toggle">
+            <input type="checkbox" id="toggle-ocr" onchange="toggleOverlay()">
+            <span class="toggle-label">📝 OCR</span>
+          </label>
+          <label class="toggle">
+            <input type="checkbox" id="toggle-dump" onchange="toggleOverlay()">
+            <span class="toggle-label">📋 DUMP</span>
+          </label>
+          <span class="toolbar-hint">点击组件标注跳转</span>
+        </div>
+
+        <!-- 跳转列表 -->
+        <div class="transitions" id="transitions-panel" style="display:none;">
+          <h3>页面跳转</h3>
+          <div id="transitions-list"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- 跳转弹窗 -->
+<div id="modal-overlay" class="modal-overlay" style="display:none;" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3>标注跳转</h3>
+    <div class="modal-body">
+      <p>选中的组件：<strong id="modal-label"></strong></p>
+      <p>位置：<span id="modal-bounds"></span></p>
+      <label>跳转到：</label>
+      <select id="modal-target"></select>
+      <label>识别方式：</label>
+      <select id="modal-method">
+        <option value="ocr">OCR</option>
+        <option value="dump">DUMP</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button onclick="confirmTransition()">确认</button>
+      <button class="secondary" onclick="closeModal()">取消</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
