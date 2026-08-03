@@ -131,7 +131,11 @@ class ExploreHandler(SimpleHTTPRequestHandler):
         return f'''"autojs";
 var pageId = "{page_id}";
 var exploreDir = "{dp}/tmp/explore/" + pageId;
+// 逐级创建目录，确保父目录存在
+files.ensureDir("{dp}/tmp");
+files.ensureDir("{dp}/tmp/explore");
 files.ensureDir(exploreDir);
+sleep(200);
 var proto = Object.getPrototypeOf($shizuku);
 if (!proto.isRunning()) {{
   proto.requestPermission(); sleep(2000);
@@ -141,7 +145,7 @@ if (!proto.isRunning()) {{
     bindMethod.setAccessible(true); bindMethod.invoke(proto); sleep(3000);
   }}
 }}
-if (!proto.isRunning()) {{ files.write(exploreDir + "/done.txt", "shizuku_failed"); exit(); }}
+if (!proto.isRunning()) {{ try {{ files.write(exploreDir + "/done.txt", "shizuku_failed"); }} catch(e) {{ log("写done.txt失败: " + e); }} exit(); }}
 var picPath = exploreDir + "/screenshot.png";
 var result = $shizuku("screencap -p " + picPath);
 if (result.code !== 0) {{
