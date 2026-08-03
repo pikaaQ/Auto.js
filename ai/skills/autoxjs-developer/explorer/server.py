@@ -169,8 +169,6 @@ if (img) {{
   files.write(tmp + "ocr.json", JSON.stringify(ocrList));
   img.recycle();
 }}
-log("Step5: Dump 组件树");
-try {{ var xml = UiSelector.dump(); if (xml) {{ files.write(tmp + "/dump.xml", xml); }} }} catch(e) {{ log("Dump 不可用: " + e); }}
 log("=== 探索完毕: " + pageId + " ===");
 '''
 
@@ -179,19 +177,26 @@ log("=== 探索完毕: " + pageId + " ===");
         local_dir = self._explore_dir(project_path, page_id)
         os.makedirs(local_dir, exist_ok=True)
         tmp = f"{_STATE['dir_path']}/tmp"
-        file_map = {
-            f"{tmp}screenshot.png": "screenshot.png",
-            f"{tmp}ocr.json": "ocr.json",
-            f"{tmp}dump.xml": "dump.xml",
-        }
-        for phone_path, local_name in file_map.items():
-            local_path = os.path.join(local_dir, local_name)
+        # 拉取截图和 OCR
+        for fname in ["screenshot.png", "ocr.json"]:
+            phone_path = f"{tmp}/{fname}"
+            local_path = os.path.join(local_dir, fname)
             cmd = {"cmd": "pull_file", "path": phone_path, "local_path": local_dir}
             resp = self._call_phone(cmd)
             if resp.get("success") and os.path.exists(local_path):
-                print(f"  ✓ 已拉取 {local_name}")
+                print(f"  ✓ 已拉取 {fname}")
             else:
-                print(f"  - 无 {local_name}")
+                print(f"  - 无 {fname}")
+        # 通过协议命令获取 UI 组件树
+        print("  获取 UI 组件树...")
+        dump_resp = self._call_phone({"cmd": "dump"})
+        if dump_resp.get("success") and dump_resp.get("result", {}).get("dump"):
+            dump_path = os.path.join(local_dir, "dump.json")
+            with open(dump_path, "w", encoding="utf-8") as f:
+                json.dump(dump_resp["result"]["dump"], f, ensure_ascii=False, indent=2)
+            print(f"  ✓ 已获取 dump.json")
+        else:
+            print(f"  - 无 dump（{dump_resp.get('error', 'unknown')}）")
         flow = self._load_flow(project_path)
         page = self._find_page(flow, page_id)
         if page:
@@ -245,12 +250,12 @@ log("=== 探索完毕: " + pageId + " ===");
                 self._send_error("页面尚未探索", 404)
                 return
             result = {"page_id": page_id, "files": {}}
-            for f in ["screenshot.png", "ocr.json", "dump.xml"]:
+            for f in ["screenshot.png", "ocr.json", "dump.json"]:
                 result["files"][f] = os.path.exists(os.path.join(page_dir, f))
             ocr_p = os.path.join(page_dir, "ocr.json")
             result["ocr"] = json.load(open(ocr_p, encoding="utf-8")) if os.path.exists(ocr_p) else []
-            dump_p = os.path.join(page_dir, "dump.xml")
-            result["dump"] = open(dump_p, encoding="utf-8").read() if os.path.exists(dump_p) else ""
+            dump_p = os.path.join(page_dir, "dump.json")
+            result["dump"] = json.dumps(json.load(open(dump_p, encoding="utf-8")), ensure_ascii=False) if os.path.exists(dump_p) else ""
             flow = self._load_flow(project)
             page = self._find_page(flow, page_id)
             result["transitions"] = page.get("transitions", []) if page else []

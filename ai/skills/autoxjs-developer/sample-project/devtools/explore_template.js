@@ -95,9 +95,9 @@ img.recycle();
 // 参考控件可视化工具的筛选链路：
 //   visibleOnly (可见性) → hasContent (内容) → inScreen (在屏) → filterFunc (属性)
 // 按维度依次输出，替代原仅查 className("android.widget.Button") 的单一方式。
+// 注：不依赖 UiSelector.dump()（该 API 不存在），通过 auto.service 直接访问组件树。
 var components = {};
-var xml = UiSelector.dump();
-if (xml) {
+if (auto.service != null) {
   log("=== 组件树关键节点 ===");
 
   // 维度1: 可见 + 可点击（不限于 Button，含 ImageView/TextView/View 等可点击节点）
