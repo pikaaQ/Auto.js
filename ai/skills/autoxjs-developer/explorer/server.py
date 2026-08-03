@@ -127,10 +127,9 @@ class ExploreHandler(SimpleHTTPRequestHandler):
         self._send_json({"error": msg}, status)
 
     def _generate_explore_script(self, page_id):
-        dp = _STATE["dir_path"]
         return f'''"autojs";
 var pageId = "{page_id}";
-var exploreDir = "{dp}/docs/explore/" + pageId;
+var exploreDir = "/sdcard/tmp/explore/" + pageId;
 files.ensureDir(exploreDir);
 var proto = Object.getPrototypeOf($shizuku);
 if (!proto.isRunning()) {{
@@ -171,7 +170,7 @@ log("=== 探索完毕: " + pageId + " ===");
         time.sleep(5)
         local_dir = self._explore_dir(project_path, page_id)
         os.makedirs(local_dir, exist_ok=True)
-        phone_dir = f"{_STATE['dir_path']}/docs/explore/{page_id}"
+        phone_dir = f"/sdcard/tmp/explore/{page_id}"
         for fname in ["done.txt", "screenshot.png", "ocr.json", "dump.xml", "error.txt"]:
             cmd = {"cmd": "pull_file", "path": f"{phone_dir}/{fname}", "local_path": local_dir}
             resp = self._call_phone(cmd)
