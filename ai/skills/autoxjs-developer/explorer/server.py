@@ -131,27 +131,38 @@ class ExploreHandler(SimpleHTTPRequestHandler):
         return f'''"autojs";
 var pageId = "{page_id}";
 var exploreDir = "{dp}/tmp/explore/" + pageId;
-// 逐级创建目录，确保父目录存在
+log("=== 探索开始: " + pageId + " ===");
+log("目标目录: " + exploreDir);
+log("Step1: 创建目录");
 files.ensureDir("{dp}/tmp");
 files.ensureDir("{dp}/tmp/explore");
 files.ensureDir(exploreDir);
 sleep(200);
+log("目录是否存在: " + files.exists(exploreDir));
+log("Step2: 绑定 Shizuku");
 var proto = Object.getPrototypeOf($shizuku);
 if (!proto.isRunning()) {{
+  log("Shizuku 未运行, 尝试绑定");
   proto.requestPermission(); sleep(2000);
   if (!proto.isRunning()) {{
+    log("requestPermission 后仍未运行, 反射绑定");
     var clazz = proto.getClass();
     var bindMethod = clazz.getDeclaredMethod("bindUserService");
     bindMethod.setAccessible(true); bindMethod.invoke(proto); sleep(3000);
   }}
 }}
+log("Shizuku 运行状态: " + proto.isRunning());
 if (!proto.isRunning()) {{ try {{ files.write(exploreDir + "/done.txt", "shizuku_failed"); }} catch(e) {{ log("写done.txt失败: " + e); }} exit(); }}
+log("Step3: 截图");
 var picPath = exploreDir + "/screenshot.png";
 var result = $shizuku("screencap -p " + picPath);
+log("截图结果: code=" + result.code + " error=" + result.error);
 if (result.code !== 0) {{
-  files.write(exploreDir + "/error.txt", "截图失败: " + result.error);
-  files.write(exploreDir + "/done.txt", "error"); exit();
+  try {{ files.write(exploreDir + "/error.txt", "截图失败: " + result.error); }} catch(e) {{ log("写error.txt失败: " + e); }}
+  try {{ files.write(exploreDir + "/done.txt", "error"); }} catch(e) {{ log("写done.txt失败: " + e); }}
+  exit();
 }}
+log("Step4: OCR");
 var img = images.read(picPath);
 if (img) {{
   var raw = $mlKitOcr.detect(img);
@@ -162,12 +173,13 @@ if (img) {{
       bounds: {{ left: raw[i].bounds.left, top: raw[i].bounds.top, right: raw[i].bounds.right, bottom: raw[i].bounds.bottom }}
     }});
   }}
-  files.write(exploreDir + "/ocr.json", JSON.stringify(ocrList));
+  try {{ files.write(exploreDir + "/ocr.json", JSON.stringify(ocrList)); }} catch(e) {{ log("写ocr.json失败: " + e); }}
   img.recycle();
 }}
+log("Step5: Dump 组件树");
 var xml = UiSelector.dump();
-if (xml) {{ files.write(exploreDir + "/dump.xml", xml); }}
-files.write(exploreDir + "/done.txt", "ok");
+if (xml) {{ try {{ files.write(exploreDir + "/dump.xml", xml); }} catch(e) {{ log("写dump.xml失败: " + e); }} }}
+try {{ files.write(exploreDir + "/done.txt", "ok"); }} catch(e) {{ log("写done.txt失败: " + e); }}
 log("=== 探索完毕: " + pageId + " ===");
 '''
 
