@@ -25,14 +25,32 @@ CONNECTOR_CALL = str(SKILL_BASE_DIR / "autoxjs-connector" / "call.py")
 CONNECTOR_PORT = 9317  # WebSocket 端口，控制端口自动推导为 +10000
 DIR_PATH = "/storage/emulated/0/脚本"
 
+# 类级状态（跨请求持久化，SimpleHTTPRequestHandler 每次请求新建实例）
+_PROJECT_ROOT = None
+_CONNECTOR_PORT = None
+_DIR_PATH = None
+_PROJECTS_DIR = None
+
 
 class ExploreHandler(SimpleHTTPRequestHandler):
 
+    def _project_root(self):
+        return _PROJECT_ROOT
+
+    def _set_project_root(self, path):
+        global _PROJECT_ROOT
+        _PROJECT_ROOT = path
+
+    def _connector_port(self):
+        return _CONNECTOR_PORT or CONNECTOR_PORT
+
+    def _dir_path(self):
+        return _DIR_PATH or DIR_PATH
+
+    def _projects_dir(self):
+        return _PROJECTS_DIR
+
     def __init__(self, *args, **kwargs):
-        self.project_root = None
-        self.connector_port = CONNECTOR_PORT
-        self.dir_path = DIR_PATH
-        self.projects_dir = None
         super().__init__(*args, **kwargs)
 
     def log_message(self, format, *args):
@@ -59,7 +77,7 @@ class ExploreHandler(SimpleHTTPRequestHandler):
     def _call_phone(self, cmd: dict) -> dict:
         try:
             result = subprocess.run(
-                [sys.executable, CONNECTOR_CALL, json.dumps(cmd), "--port", str(self.connector_port)],
+                [sys.executable, CONNECTOR_CALL, json.dumps(cmd), "--port", str(self._connector_port())],
                 capture_output=True, text=True, timeout=60
             )
             if result.returncode != 0:
@@ -71,16 +89,16 @@ class ExploreHandler(SimpleHTTPRequestHandler):
             return {"error": str(e)}
 
     def _flow_path(self):
-        return os.path.join(self.project_root, "docs", "flow.json")
+        return os.path.join(self._project_root(), "docs", "flow.json")
 
     def _explore_dir(self, page_id=None):
-        base = os.path.join(self.project_root, "docs", "explore")
+        base = os.path.join(self._project_root(), "docs", "explore")
         if page_id:
             return os.path.join(base, page_id)
         return base
 
     def _load_flow(self) -> dict:
-        if not self.project_root:
+        if not self._project_root():
             return {"pages": []}
         path = self._flow_path()
         if os.path.exists(path):
@@ -103,10 +121,10 @@ class ExploreHandler(SimpleHTTPRequestHandler):
     def _scan_projects(self) -> list:
         """扫描 projects_dir 下所有可能的项目"""
         projects = []
-        if not self.projects_dir or not os.path.isdir(self.projects_dir):
+        if not self._projects_dir() or not os.path.isdir(self._projects_dir()):
             return projects
-        for entry in os.listdir(self.projects_dir):
-            path = os.path.join(self.projects_dir, entry)
+        for entry in os.listdir(self._projects_dir()):
+            path = os.path.join(self._projects_dir(), entry)
             if not os.path.isdir(path) or entry.startswith("."):
                 continue
             # 检测是否为 AutoX.js 项目（有 project.json 或 lib/ 或 actions/）
@@ -127,7 +145,7 @@ class ExploreHandler(SimpleHTTPRequestHandler):
         # 项目选择
         if path == "/api/projects":
             projects = self._scan_projects()
-            current = self.project_root
+            current = self._project_root()
             self._send_json({
                 "projects": projects,
                 "current": current,
@@ -135,19 +153,19 @@ class ExploreHandler(SimpleHTTPRequestHandler):
 
         elif path == "/api/projects/current":
             self._send_json({
-                "project_root": self.project_root,
-                "project_name": os.path.basename(self.project_root) if self.project_root else None,
+                "project_root": self._project_root(),
+                "project_name": os.path.basename(self._project_root()) if self._project_root() else None,
             })
 
         elif path == "/api/flow":
-            if not self.project_root:
+            if not self._project_root():
                 self._send_error("请先选择项目", 400)
                 return
             flow = self._load_flow()
             self._send_json(flow)
 
         elif path == "/api/explore/pages":
-            if not self.project_root:
+            if not self._project_root():
                 self._send_error("请先选择项目", 400)
                 return
             flow = self._load_flow()
@@ -203,9 +221,9 @@ class ExploreHandler(SimpleHTTPRequestHandler):
 
         elif path == "/api/config":
             self._send_json({
-                "dir_path": self.dir_path,
-                "connector_port": self.connector_port,
-                "project_root": self.project_root,
+                "dir_path": self._dir_path(),
+                "connector_port": self._connector_port(),
+                "project_root": self._project_root(),
             })
 
         elif path == "/" or path == "/index.html":
@@ -250,16 +268,16 @@ class ExploreHandler(SimpleHTTPRequestHandler):
             if not os.path.isdir(project_path):
                 self._send_error("项目路径不存在")
                 return
-            self.project_root = project_path
+            self._set_project_root(project_path)
             os.makedirs(self._explore_dir(), exist_ok=True)
             self._send_json({
                 "status": "ok",
-                "project_root": self.project_root,
+                "project_root": self._project_root(),
                 "project_name": os.path.basename(project_path),
             })
 
         elif path == "/api/explore":
-            if not self.project_root:
+            if not self._project_root():
                 self._send_error("请先选择项目")
                 return
             page_id = data.get("page_id", "")
@@ -311,7 +329,7 @@ class ExploreHandler(SimpleHTTPRequestHandler):
                 self._send_json({"status": "running", "page_id": page_id})
 
         elif path == "/api/flow/transition":
-            if not self.project_root:
+            if not self._project_root():
                 self._send_error("请先选择项目")
                 return
             page_id = data.get("page_id", "")
@@ -345,7 +363,7 @@ class ExploreHandler(SimpleHTTPRequestHandler):
             self._send_json({"status": "ok", "transition": transition})
 
         elif path == "/api/flow/page":
-            if not self.project_root:
+            if not self._project_root():
                 self._send_error("请先选择项目")
                 return
             page_id = data.get("id", "")
@@ -385,7 +403,7 @@ class ExploreHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/api/flow":
-            if not self.project_root:
+            if not self._project_root():
                 self._send_error("请先选择项目")
                 return
             if "pages" in data:
@@ -404,7 +422,7 @@ class ExploreHandler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def _generate_explore_script(self, page_id: str) -> str:
-        dir_path = self.dir_path
+        dir_path = self._dir_path()
         return f'''"autojs";
 var pageId = "{page_id}";
 var exploreDir = "{dir_path}/docs/explore/" + pageId;
@@ -467,7 +485,7 @@ log("=== 探索完毕: " + pageId + " ===");
         time.sleep(5)
         local_dir = self._explore_dir(page_id)
         os.makedirs(local_dir, exist_ok=True)
-        phone_dir = f"{self.dir_path}/docs/explore/{page_id}"
+        phone_dir = f"{self._dir_path()}/docs/explore/{page_id}"
 
         for fname in ["done.txt", "screenshot.png", "ocr.json", "dump.xml", "error.txt"]:
             phone_path = f"{phone_dir}/{fname}"
@@ -496,7 +514,12 @@ def main():
     parser.add_argument("--http-port", type=int, default=5000, help="Web 服务端口")
     args = parser.parse_args()
 
-    projects_dir = os.path.abspath(args.projects_dir)
+    global _CONNECTOR_PORT, _DIR_PATH, _PROJECTS_DIR
+    _CONNECTOR_PORT = args.connector_port
+    _DIR_PATH = args.dir_path
+    _PROJECTS_DIR = os.path.abspath(args.projects_dir)
+
+    projects_dir = _PROJECTS_DIR
     print(f"📁 项目扫描目录: {projects_dir}")
     print(f"📱 手机脚本目录: {args.dir_path}")
     print(f"🔌 Connector 端口: {args.connector_port} (WebSocket) / {args.connector_port + 10000} (控制)")
@@ -505,9 +528,6 @@ def main():
 
     # 启动 HTTP 服务
     server = HTTPServer(("0.0.0.0", args.http_port), ExploreHandler)
-    server.connector_port = args.connector_port
-    server.dir_path = args.dir_path
-    server.projects_dir = projects_dir
 
     handler = ExploreHandler
     handler.connector_port = args.connector_port
