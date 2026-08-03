@@ -202,25 +202,23 @@ async function loadResult(pageId) {
     setupCanvas(); renderOverlay();
   };
   ocrData = data.ocr || [];
-  dumpData = data.dump ? parseDumpXml(data.dump) : null;
+  dumpData = data.dump ? parseDumpData(data.dump) : null;
   renderTransitions(data.transitions || []);
 }
 
-function parseDumpXml(xml) {
-  const nodes = [];
-  const regex = /<node\s+([^>]+)>/g;
-  let match;
-  while ((match = regex.exec(xml)) !== null) {
-    const attrs = {};
-    const attrRegex = /(\w+)="([^"]*)"/g;
-    let am;
-    while ((am = attrRegex.exec(match[1])) !== null) attrs[am[1]] = am[2];
-    if (attrs.bounds) {
-      const bm = attrs.bounds.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
-      if (bm) { attrs._left = parseInt(bm[1]); attrs._top = parseInt(bm[2]); attrs._right = parseInt(bm[3]); attrs._bottom = parseInt(bm[4]); nodes.push(attrs); }
-    }
+function parseDumpData(data) {
+  // JSON 格式：扁平节点数组 [{bounds, text, className, clickable, depth}]
+  if (typeof data === "string") {
+    try { data = JSON.parse(data); } catch { return []; }
   }
-  return nodes;
+  if (Array.isArray(data)) {
+    return data.map(n => ({
+      _left: n.bounds.left, _top: n.bounds.top,
+      _right: n.bounds.right, _bottom: n.bounds.bottom,
+      text: n.text || "", className: n.className || "", clickable: n.clickable,
+    })).filter(n => n._right > n._left && n._bottom > n._top);
+  }
+  return [];
 }
 
 function setupCanvas() {

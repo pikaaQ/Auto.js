@@ -126,6 +126,34 @@ class ExploreHandler(SimpleHTTPRequestHandler):
     def _send_error(self, msg, status=400):
         self._send_json({"error": msg}, status)
 
+    def _flatten_dump(self, node, depth=0):
+        """展平 dump 树，过滤不可见节点，返回 [{bounds, text, className, ...}]"""
+        if not node or not isinstance(node, dict):
+            return []
+        result = []
+        # 只保留可见节点
+        if node.get("visible") and node.get("bounds"):
+            bounds = node["bounds"]
+            # bounds 格式 "[0,0][1080,2400]"
+            import re
+            m = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", str(bounds))
+            if m:
+                result.append({
+                    "bounds": {
+                        "left": int(m.group(1)), "top": int(m.group(2)),
+                        "right": int(m.group(3)), "bottom": int(m.group(4)),
+                    },
+                    "text": node.get("text") or "",
+                    "className": node.get("className") or "",
+                    "clickable": node.get("clickable", False),
+                    "depth": depth,
+                })
+        # 递归子节点（child0, child1, ...）
+        for key in sorted(node.keys()):
+            if key.startswith("child") and isinstance(node[key], dict):
+                result.extend(self._flatten_dump(node[key], depth + 1))
+        return result
+
     def _generate_explore_script(self, page_id):
         dp = _STATE["dir_path"]
         return f'''"autojs";
@@ -194,9 +222,11 @@ log("=== 探索完毕: " + pageId + " ===");
         dump_resp = self._call_phone({"cmd": "dump"})
         if dump_resp.get("success") and dump_resp.get("result", {}).get("dump"):
             dump_path = os.path.join(local_dir, "dump.json")
+            # 展平树、过滤不可见节点、提取 bounds/text
+            flat = self._flatten_dump(dump_resp["result"]["dump"])
             with open(dump_path, "w", encoding="utf-8") as f:
-                json.dump(dump_resp["result"]["dump"], f, ensure_ascii=False, indent=2)
-            print(f"  ✓ 已获取 dump.json")
+                json.dump(flat, f, ensure_ascii=False, indent=2)
+            print(f"  ✓ 已获取 dump.json ({len(flat)} 个可见节点)")
         else:
             print(f"  - 无 dump（{dump_resp.get('error', 'unknown')}）")
         flow = self._load_flow(project_path)
