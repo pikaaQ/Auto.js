@@ -130,16 +130,9 @@ class ExploreHandler(SimpleHTTPRequestHandler):
         dp = _STATE["dir_path"]
         return f'''"autojs";
 var pageId = "{page_id}";
-var exploreDir = "{dp}/tmp/explore/" + pageId;
+var base = "{dp}/tmp/explore_" + pageId;
 log("=== 探索开始: " + pageId + " ===");
-log("目标目录: " + exploreDir);
-log("Step1: 创建目录");
-files.ensureDir("{dp}/tmp");
-files.ensureDir("{dp}/tmp/explore");
-files.ensureDir(exploreDir);
-sleep(200);
-log("目录是否存在: " + files.exists(exploreDir));
-log("Step2: 绑定 Shizuku");
+log("Step1: 绑定 Shizuku");
 var proto = Object.getPrototypeOf($shizuku);
 if (!proto.isRunning()) {{
   log("Shizuku 未运行, 尝试绑定");
@@ -152,17 +145,13 @@ if (!proto.isRunning()) {{
   }}
 }}
 log("Shizuku 运行状态: " + proto.isRunning());
-if (!proto.isRunning()) {{ try {{ files.write(exploreDir + "/done.txt", "shizuku_failed"); }} catch(e) {{ log("写done.txt失败: " + e); }} exit(); }}
-log("Step3: 截图");
-var picPath = exploreDir + "/screenshot.png";
+if (!proto.isRunning()) {{ log("Shizuku 不可用"); exit(); }}
+log("Step2: 截图");
+var picPath = base + "_screenshot.png";
 var result = $shizuku("screencap -p " + picPath);
 log("截图结果: code=" + result.code + " error=" + result.error);
-if (result.code !== 0) {{
-  try {{ files.write(exploreDir + "/error.txt", "截图失败: " + result.error); }} catch(e) {{ log("写error.txt失败: " + e); }}
-  try {{ files.write(exploreDir + "/done.txt", "error"); }} catch(e) {{ log("写done.txt失败: " + e); }}
-  exit();
-}}
-log("Step4: OCR");
+if (result.code !== 0) {{ log("截图失败: " + result.error); exit(); }}
+log("Step3: OCR");
 var img = images.read(picPath);
 if (img) {{
   var raw = $mlKitOcr.detect(img);
@@ -173,13 +162,12 @@ if (img) {{
       bounds: {{ left: raw[i].bounds.left, top: raw[i].bounds.top, right: raw[i].bounds.right, bottom: raw[i].bounds.bottom }}
     }});
   }}
-  try {{ files.write(exploreDir + "/ocr.json", JSON.stringify(ocrList)); }} catch(e) {{ log("写ocr.json失败: " + e); }}
+  files.write(base + "_ocr.json", JSON.stringify(ocrList));
   img.recycle();
 }}
-log("Step5: Dump 组件树");
+log("Step4: Dump 组件树");
 var xml = UiSelector.dump();
-if (xml) {{ try {{ files.write(exploreDir + "/dump.xml", xml); }} catch(e) {{ log("写dump.xml失败: " + e); }} }}
-try {{ files.write(exploreDir + "/done.txt", "ok"); }} catch(e) {{ log("写done.txt失败: " + e); }}
+if (xml) {{ files.write(base + "_dump.xml", xml); }}
 log("=== 探索完毕: " + pageId + " ===");
 '''
 
@@ -187,14 +175,20 @@ log("=== 探索完毕: " + pageId + " ===");
         time.sleep(5)
         local_dir = self._explore_dir(project_path, page_id)
         os.makedirs(local_dir, exist_ok=True)
-        phone_dir = f"{_STATE['dir_path']}/tmp/explore/{page_id}"
-        for fname in ["done.txt", "screenshot.png", "ocr.json", "dump.xml", "error.txt"]:
-            cmd = {"cmd": "pull_file", "path": f"{phone_dir}/{fname}", "local_path": local_dir}
+        base = f"{_STATE['dir_path']}/tmp/explore_{page_id}"
+        file_map = {
+            f"{base}_screenshot.png": "screenshot.png",
+            f"{base}_ocr.json": "ocr.json",
+            f"{base}_dump.xml": "dump.xml",
+        }
+        for phone_path, local_name in file_map.items():
+            local_path = os.path.join(local_dir, local_name)
+            cmd = {"cmd": "pull_file", "path": phone_path, "local_path": local_dir}
             resp = self._call_phone(cmd)
-            if resp.get("success") and os.path.exists(os.path.join(local_dir, fname)):
-                print(f"  ✓ 已拉取 {fname}")
+            if resp.get("success") and os.path.exists(local_path):
+                print(f"  ✓ 已拉取 {local_name}")
             else:
-                print(f"  - 无 {fname}")
+                print(f"  - 无 {local_name}")
         flow = self._load_flow(project_path)
         page = self._find_page(flow, page_id)
         if page:
