@@ -138,10 +138,18 @@ CALL="python3 ${skill_base_dir}/autoxjs-connector/call.py"
 SCRIPT=$(cat 本地脚本.js)
 $CALL "{\"cmd\":\"run\",\"name\":\"my_script.js\",\"script\":$(python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))" <<< "$SCRIPT"),\"wait\":false}" --port 9317
 # 脚本已在手机后台执行
-sleep 3  # 等日志写入
+sleep 3  # 等脚本执行完毕
 ```
 
-> ⚠️ **`run` 命令不回 `command_result`**，`wait=true` 会超时。必须用 `wait=false` + sleep,通过执行完后读取日志检查执行情况.
+> ⚠️ **`run` 命令不回 `command_result`**，`wait=true` 会超时。必须用 `wait=false` + sleep, 执行完后拉取结果文件获取脚本执行结果.
+
+探索/验证脚本执行完毕后，拉取结果 JSON 文件：
+```bash
+# 从手机拉取结果 JSON 到本地 phone_data 目录
+DIR_PATH="缓存好的手机脚本根目录"
+LOCAL_DIR="phone_data/探索_$(date +%Y%m%d_%H%M%S)"
+$CALL "{\"cmd\":\"pull_file\",\"path\":\"$DIR_PATH/tmp/explore_result.json\",\"local_path\":\"$LOCAL_DIR\"}" --port 9317
+```
 
 #### 推送并保存到手机
 推送并保存到手机再执行的脚本,一般用于test下的单元测试脚本,他们依赖项目中的代码模块.
@@ -193,7 +201,7 @@ $CALL '{"cmd":"run","name":"已保存的脚本路径","wait":false}' --port 9317
 sleep 3  # 等日志写入
 ```
 
-> ⚠️ **`run` 命令不回 `command_result`**，`wait=true` 会超时。必须用 `wait=false` + sleep,通过执行完后读取日志检查执行情况.
+> ⚠️ **`run` 命令不回 `command_result`**，`wait=true` 会超时。必须用 `wait=false` + sleep, 执行完后拉取结果文件获取脚本执行结果.
 
 #### 推送项目到手机
 
@@ -232,7 +240,7 @@ $CALL "{\"cmd\":\"pull_file\",\"path\":\"{dir_path}/.logs/autojs-log4j.txt\",\"l
 
 ### 探索与验证方法
 
-当需要探索页面和验证操作时，在 `devtools/` 下编辑好脚本，然后推送执行（`run` 指令，探索脚本为单脚本，不会保存到手机，因此 **不能使用 `lib/` 下的模块**，所有代码必须内联），最后拉取执行日志来分析，达成探索和验证的目的。
+当需要探索页面和验证操作时，在 `devtools/` 下编辑好脚本，然后推送执行（`run` 指令，探索脚本为单脚本，不会保存到手机，因此 **不能使用 `lib/` 下的模块**，所有代码必须内联），最后拉取结果 JSON 文件来分析，达成探索和验证的目的。
 
 #### 如何探索
 
@@ -241,15 +249,16 @@ $CALL "{\"cmd\":\"pull_file\",\"path\":\"{dir_path}/.logs/autojs-log4j.txt\",\"l
 使用 `devtools/explore_template.js` 脚本模板进行检查(如果自己进入页面,需要复制后修改 TODO 使用,如果用户已经进入指定页面,可以直接使用)：
 
 探索脚本逻辑为：
-1. 检查项目下有没有tmp目录，没有就先创建
+1. 清空项目下 tmp 目录，确保每次执行结果独立
 2. 进入页面
 3. **截图 + mlkocr**：
-    探索/验证时脚本中**使用 Shizuku 执行 `screencap` 截图**（无需申请截图权限，无需弹窗），固定保存到当前项目的tmp目录。然后读取截图后用 `mlkocr` 识别文字，识别结果写入log。
-    **如果 Shizuku 截图失败，提示用户检查 Shizuku 是否运行，而不是自作主张采用其他方法**
-4. **Dump 组件树**：获取当前界面 UI 组件树 XML，分析组件的 className、desc、text、bounds、clickable 等属性
+     探索/验证时脚本中**使用 Shizuku 执行 `screencap` 截图**（无需申请截图权限，无需弹窗），固定保存到当前项目的tmp目录。然后读取截图后用 `mlkocr` 识别文字，识别结果写入结构化数据。
+     **如果 Shizuku 截图失败，提示用户检查 Shizuku 是否运行，而不是自作主张采用其他方法**
+4. **Dump 组件树 + 多维度筛选**：获取当前界面 UI 组件树，参考控件可视化筛选链路（可见性 → 内容 → 在屏 → 属性），按 clickable/text/desc/classSummary 多个维度收集结构化数据
+5. **写入结果 JSON 文件**：将 OCR 结果和组件筛选结果写入 `tmp/explore_result.json`
 
 
-同一页面，将该脚本逻辑执行多次(一般在进入后依次间隔500ms 1s 3s秒各执行一次,执行3次,以判断开屏广告,开屏弹窗,加载等待等各种状态)，获得尽可能全部可能的OCR结果和组件树dump结果。每执行依次, 将探索过程获取的截图/OCR/DUMP结果都保存到对应页面的探索文档目录下( `/docs/explore/页面/`), 待脚本多次执行完成后，结合多次 OCR 结果和组件树信息，分析当前页面，并在docs目录下记录页面文档信息。
+同一页面，将该脚本逻辑执行多次(一般在进入后依次间隔500ms 1s 3s秒各执行一次,执行3次,以判断开屏广告,开屏弹窗,加载等待等各种状态)，获得尽可能全部可能的OCR结果和组件树dump结果。每执行一次, 先从手机拉取 `tmp/explore_result.json` 到本地，再将截图/OCR/DUMP结果都保存到对应页面的探索文档目录下( `/docs/explore/页面/`)，待脚本多次执行完成后，结合多次 OCR结果和组件树信息，分析当前页面，并在docs目录下记录页面文档信息。
 **如果上述方式分析出的信息无法达成流程要求，可以在申请用户同意后，将截图拉取到项目中，使用look_at分析图片，这种操作必须申请用户同意后才可实施。**
 
 #### 如何验证
@@ -257,7 +266,7 @@ $CALL "{\"cmd\":\"pull_file\",\"path\":\"{dir_path}/.logs/autojs-log4j.txt\",\"l
 1. 检查项目下有没有tmp目录，没有就先创建
 2. 进入操作的前置页面
 3. 执行单元操作
-4. 截图 + mlkocr + dump组件树（方案同探索中的2、3），判断操作后的页面和页面组件是否和预期一致。
+4. 截图 + mlkocr + dump组件树（方案同探索中的2、3、4），等待脚本执行完毕后拉取 `tmp/explore_result.json`，判断操作后的页面和页面组件是否和预期一致。
 
 ### 探索工具（手动快速探索）
 
@@ -355,7 +364,7 @@ python3 ${skill_base_dir}/autoxjs-developer/explorer/server.py --http-port 5000
 
 - 探索、验证脚本中应该使用 `log()` 输出探测结果（**不要调用 `console.show()`**，控制台窗口遮挡屏幕会导致 OCR 不准）
 - 探索、验证脚本逐一测试可能的查找方式并打印结果，然后根据优先级在开发时使用
-- 探索、验证脚本通过第一条日志`=== 开始 ===`，最后一条日志 `=== 完毕 ===` 标记开始结束，这样方便每次检查日志时快速定位
+- 探索、验证脚本通过第一条日志`=== 开始 ===`，最后一条日志 `=== 完毕 ===` 标记开始结束，这样方便每次检查日志时快速定位。详细结果数据写入 `tmp/explore_result.json` 文件，通过拉取该文件获取结构化结果。
 - **`widget.desc()` 和 `widget.text()` 是方法，不是属性** — 必须加括号调用
 - 组件属性如 `bounds()`、`className()`、`clickable()` 也都是方法
 - 调试父组件树时递归调用 `widget.children()` 遍历
@@ -364,7 +373,11 @@ python3 ${skill_base_dir}/autoxjs-developer/explorer/server.py --http-port 5000
 CALL="python3 ${skill_base_dir}/autoxjs-connector/call.py"
 $CALL "{\"cmd\":\"run\",\"name\":\"diagnose.js\",\"script\":\"log('=== 开始 ===');\n// ...诊断代码...\nlog('=== 完毕 ===');\",\"wait\":false}" --port 9317
 # 脚本已在手机后台执行 **不保存到手机**，无需手动清理
-sleep 3  # 等待日志写入
+sleep 3  # 等待脚本执行完毕
+
+# 拉取结果文件（如果脚本输出 JSON 结果到 tmp/）
+DIR_PATH="缓存好的手机脚本根目录"
+$CALL "{\"cmd\":\"pull_file\",\"path\":\"$DIR_PATH/tmp/explore_result.json\",\"local_path\":\"phone_data/\"}" --port 9317
 ```
 - 如果用 `save` + `run` 两步法推送诊断脚本，记录保存的文件名，完成后记得清理。
 - 临时拉取的日志、文件保存在phone_data下，使用后清理，清理脚本模板（包括手机和PC上）：

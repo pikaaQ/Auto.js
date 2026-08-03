@@ -21,7 +21,7 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-SKILL_BASE_DIR = Path(__file__).resolve().parent.parent
+SKILL_BASE_DIR = Path(__file__).resolve().parent.parent.parent
 CONNECTOR_CALL = str(SKILL_BASE_DIR / "autoxjs-connector" / "call.py")
 CONNECTOR_PORT = 9317
 DIR_PATH = "/storage/emulated/0/脚本"
@@ -299,6 +299,9 @@ log("=== 探索完毕: " + pageId + " ===");
             if not page_id or not project:
                 self._send_error("缺少 page_id 或 project_path")
                 return
+            # 确保本地目录存在
+            os.makedirs(self._explore_dir(project), exist_ok=True)
+            os.makedirs(self._explore_dir(project, page_id), exist_ok=True)
             script = self._generate_explore_script(page_id)
             resp = self._call_phone({"cmd": "run", "name": f"_explore_{page_id}.js", "script": script, "wait": False})
             if resp.get("error"):

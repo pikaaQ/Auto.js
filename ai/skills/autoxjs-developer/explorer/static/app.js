@@ -1,16 +1,48 @@
 // ─── 状态 ───────────────────────────────────────────
 let currentPageId = null;
-let ocrData = [];
-let dumpData = null;
-let selectedComponent = null;
-let componentList = [];
-let flow = { pages: [] };
-let projectPath = null;
+let ocrData = [], dumpData = null, selectedComponent = null, componentList = [];
+let flow = { pages: [] }, projectPath = null;
+const STORAGE_KEY = "explorer_project_paths";
 
 // ─── 初始化 ─────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
-  showProjectSelector();
+  const lastPath = localStorage.getItem(STORAGE_KEY + "_last");
+  if (lastPath) {
+    projectPath = lastPath;
+    document.getElementById("project-name").textContent = lastPath.split("/").pop();
+    initProject();
+  } else {
+    showProjectSelector();
+  }
 });
+
+async function initProject() {
+  await loadFlow();
+  renderPageList();
+  document.getElementById("detail-title").textContent = "选择一个页面开始探索";
+}
+
+// ─── 本地存储 ───────────────────────────────────────
+function getSavedPaths() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
+  catch { return []; }
+}
+
+function savePath(path) {
+  let paths = getSavedPaths().filter(p => p !== path);
+  paths.unshift(path);
+  if (paths.length > 10) paths = paths.slice(0, 10);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(paths));
+  localStorage.setItem(STORAGE_KEY + "_last", path);
+}
+
+function deleteSavedPath(path) {
+  let paths = getSavedPaths().filter(p => p !== path);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(paths));
+  if (localStorage.getItem(STORAGE_KEY + "_last") === path) {
+    localStorage.removeItem(STORAGE_KEY + "_last");
+  }
+}
 
 // ─── API 调用 ───────────────────────────────────────
 async function api(method, path, body) {
@@ -33,6 +65,26 @@ function qs(params) {
 async function showProjectSelector() {
   const overlay = document.getElementById("project-selector");
   overlay.style.display = "flex";
+
+  // 历史记录
+  const saved = getSavedPaths();
+  const historySection = document.getElementById("history-list");
+  const historyItems = document.getElementById("history-items");
+  if (saved.length > 0) {
+    historySection.style.display = "block";
+    historyItems.innerHTML = "";
+    saved.forEach(p => {
+      const div = document.createElement("div");
+      div.className = "project-item";
+      div.innerHTML = `<div style="flex:1"><div class="project-item-name">${p.split("/").pop()}</div><div class="project-item-path">${p}</div></div><button class="del-btn" onclick="event.stopPropagation();deleteSavedPath('${p}');showProjectSelector();" style="color:#f44336;background:none;border:none;cursor:pointer;font-size:16px;">×</button>`;
+      div.onclick = () => selectProject(p);
+      historyItems.appendChild(div);
+    });
+  } else {
+    historySection.style.display = "none";
+  }
+
+  // 扫描项目
   const list = document.getElementById("project-list");
   list.innerHTML = "<p style='color:#999;font-size:13px;'>扫描中...</p>";
   try {
@@ -60,11 +112,10 @@ function closeProjectSelector() {
 
 async function selectProject(path) {
   projectPath = path;
+  savePath(path);
   document.getElementById("project-name").textContent = path.split("/").pop();
   closeProjectSelector();
-  await loadFlow();
-  renderPageList();
-  document.getElementById("detail-title").textContent = "选择一个页面开始探索";
+  await initProject();
 }
 
 async function selectManualPath() {
@@ -76,9 +127,8 @@ async function selectManualPath() {
 // ─── 加载 flow ──────────────────────────────────────
 async function loadFlow() {
   if (!projectPath) return;
-  try {
-    flow = await fetch("/api/flow" + qs({ project_path: projectPath })).then(r => r.json());
-  } catch { flow = { pages: [] }; }
+  try { flow = await fetch("/api/flow" + qs({ project_path: projectPath })).then(r => r.json()); }
+  catch { flow = { pages: [] }; }
 }
 
 async function refreshResult() {
@@ -90,9 +140,8 @@ async function refreshResult() {
 async function renderPageList() {
   if (!projectPath) return;
   let data = [];
-  try {
-    data = await fetch("/api/explore/pages" + qs({ project_path: projectPath })).then(r => r.json());
-  } catch { data = []; }
+  try { data = await fetch("/api/explore/pages" + qs({ project_path: projectPath })).then(r => r.json()); }
+  catch { data = []; }
   const list = document.getElementById("page-list");
   list.innerHTML = "";
   document.getElementById("page-count").textContent = data.length;
@@ -116,9 +165,7 @@ async function selectPage(pageId) {
   document.getElementById("btn-refresh").disabled = false;
   document.querySelectorAll(".page-item").forEach(el => el.classList.remove("active"));
   document.querySelectorAll(".page-item").forEach(el => {
-    if (el.querySelector(".page-name").textContent === (flow.pages.find(p => p.id === pageId)?.name || pageId)) {
-      el.classList.add("active");
-    }
+    if (el.querySelector(".page-name").textContent === (flow.pages.find(p => p.id === pageId)?.name || pageId)) el.classList.add("active");
   });
   document.getElementById("detail-title").textContent = `📄 ${flow.pages.find(p => p.id === pageId)?.name || pageId}`;
   await loadResult(pageId);
@@ -128,14 +175,13 @@ async function selectPage(pageId) {
 async function loadResult(pageId) {
   if (!projectPath) return;
   let data;
-  try {
-    data = await fetch(`/api/explore/${pageId}/result` + qs({ project_path: projectPath })).then(r => r.json());
-  } catch {
-    document.getElementById("placeholder").style.display = "block";
-    document.getElementById("placeholder").innerHTML = "<p>该页面尚未探索</p>";
-    document.getElementById("image-wrapper").style.display = "none";
-    document.getElementById("toolbar").style.display = "none";
-    document.getElementById("transitions-panel").style.display = "none";
+  try { data = await fetch(`/api/explore/${pageId}/result` + qs({ project_path: projectPath })).then(r => r.json()); }
+  catch {
+    ["placeholder", "image-wrapper", "toolbar", "transitions-panel"].forEach(id => {
+      const el = document.getElementById(id);
+      if (["image-wrapper", "toolbar", "transitions-panel"].includes(id)) { el.style.display = "none"; }
+      else { el.style.display = "block"; el.innerHTML = "<p>该页面尚未探索</p>"; }
+    });
     return;
   }
   document.getElementById("placeholder").style.display = "none";
@@ -153,8 +199,7 @@ async function loadResult(pageId) {
     document.getElementById("image-wrapper").style.display = "inline-block";
     document.getElementById("toolbar").style.display = "flex";
     document.getElementById("transitions-panel").style.display = "block";
-    setupCanvas();
-    renderOverlay();
+    setupCanvas(); renderOverlay();
   };
   ocrData = data.ocr || [];
   dumpData = data.dump ? parseDumpXml(data.dump) : null;
@@ -172,11 +217,7 @@ function parseDumpXml(xml) {
     while ((am = attrRegex.exec(match[1])) !== null) attrs[am[1]] = am[2];
     if (attrs.bounds) {
       const bm = attrs.bounds.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
-      if (bm) {
-        attrs._left = parseInt(bm[1]); attrs._top = parseInt(bm[2]);
-        attrs._right = parseInt(bm[3]); attrs._bottom = parseInt(bm[4]);
-        nodes.push(attrs);
-      }
+      if (bm) { attrs._left = parseInt(bm[1]); attrs._top = parseInt(bm[2]); attrs._right = parseInt(bm[3]); attrs._bottom = parseInt(bm[4]); nodes.push(attrs); }
     }
   }
   return nodes;
@@ -205,8 +246,7 @@ function renderOverlay() {
       if (w <= 0 || h <= 0) return;
       componentList.push({ id: `ocr_${item.label}_${x}_${y}`, type: "ocr", label: item.label, bounds: { left: x, top: y, right: b.right, bottom: b.bottom } });
       ctx.strokeStyle = "#f44336"; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
-      ctx.fillStyle = "rgba(244, 67, 54, 0.7)";
-      ctx.font = "12px sans-serif";
+      ctx.fillStyle = "rgba(244, 67, 54, 0.7)"; ctx.font = "12px sans-serif";
       const tw = ctx.measureText(item.label).width;
       ctx.fillRect(x, y - 16, Math.min(tw + 6, w), 16);
       ctx.fillStyle = "#fff"; ctx.fillText(item.label, x + 3, y - 4);
@@ -216,8 +256,7 @@ function renderOverlay() {
     dumpData.forEach(node => {
       const x = node._left, y = node._top, w = node._right - node._left, h = node._bottom - node._top;
       if (w <= 0 || h <= 0) return;
-      const label = node.text || node.desc || node.className || "";
-      if (!label) return;
+      const label = node.text || node.desc || node.className || ""; if (!label) return;
       componentList.push({ id: `dump_${label}_${x}_${y}`, type: "dump", label, bounds: { left: x, top: y, right: node._right, bottom: node._bottom } });
       ctx.strokeStyle = "#9c27b0"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 2]); ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
       ctx.fillStyle = "rgba(156, 39, 176, 0.7)"; ctx.font = "11px sans-serif";
@@ -249,37 +288,25 @@ function showTransitionModal(component) {
   document.getElementById("modal-bounds").textContent = `[${component.bounds.left},${component.bounds.top} - ${component.bounds.right},${component.bounds.bottom}]`;
   const select = document.getElementById("modal-target");
   select.innerHTML = "";
-  flow.pages.forEach(p => {
-    if (p.id !== currentPageId) { const o = document.createElement("option"); o.value = p.id; o.textContent = p.name; select.appendChild(o); }
-  });
+  flow.pages.forEach(p => { if (p.id !== currentPageId) { const o = document.createElement("option"); o.value = p.id; o.textContent = p.name; select.appendChild(o); } });
   const c = document.createElement("option"); c.value = "__custom__"; c.textContent = "手动输入..."; select.appendChild(c);
   document.getElementById("modal-method").value = component.type;
   document.getElementById("modal-overlay").style.display = "flex";
 }
 
-function closeModal(e) {
-  if (e && e.target !== e.currentTarget) return;
-  document.getElementById("modal-overlay").style.display = "none";
-  selectedComponent = null;
-}
+function closeModal(e) { if (e && e.target !== e.currentTarget) return; document.getElementById("modal-overlay").style.display = "none"; selectedComponent = null; }
 
 async function confirmTransition() {
   const target = document.getElementById("modal-target").value;
   let targetId = target;
-  if (target === "__custom__") {
-    targetId = prompt("输入目标页面ID:"); if (!targetId) return;
-    await api("POST", "/api/flow/page", { id: targetId, name: targetId });
-    await loadFlow();
-  }
+  if (target === "__custom__") { targetId = prompt("输入目标页面ID:"); if (!targetId) return; await api("POST", "/api/flow/page", { id: targetId, name: targetId }); await loadFlow(); }
   await api("POST", "/api/flow/transition", {
     page_id: currentPageId, target_id: targetId,
     method: document.getElementById("modal-method").value,
     label: selectedComponent.label,
     bounds: [selectedComponent.bounds.left, selectedComponent.bounds.top, selectedComponent.bounds.right, selectedComponent.bounds.bottom],
   });
-  closeModal();
-  await loadResult(currentPageId);
-  renderPageList();
+  closeModal(); await loadResult(currentPageId); renderPageList();
 }
 
 function renderTransitions(transitions) {
@@ -296,9 +323,7 @@ function renderTransitions(transitions) {
 async function deleteTransition(index) {
   const page = flow.pages.find(p => p.id === currentPageId); if (!page) return;
   page.transitions.splice(index, 1);
-  await api("PUT", "/api/flow", flow);
-  await loadResult(currentPageId);
-  renderPageList();
+  await api("PUT", "/api/flow", flow); await loadResult(currentPageId); renderPageList();
 }
 
 async function explorePage() {
