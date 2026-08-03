@@ -354,9 +354,3 @@ async function addPage() {
   try { await api("POST", "/api/flow/page", { id, name: name || id }); await loadFlow(); renderPageList(); }
   catch (e) { alert(e.message); }
 }
-
-async function exportFlow() {
-  await loadFlow();
-  const blob = new Blob([JSON.stringify(flow, null, 2)], { type: "application/json" });
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "flow.json"; a.click();
-}
