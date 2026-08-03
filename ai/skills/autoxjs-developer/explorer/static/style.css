@@ -4,31 +4,43 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; b
 #app { display: flex; flex-direction: column; height: 100vh; }
 
 /* Header */
-header { background: #1a1a2e; color: #fff; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }
+header { background: #1a1a2e; color: #fff; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
 header h1 { font-size: 18px; font-weight: 600; }
 .header-actions { display: flex; gap: 8px; align-items: center; }
-header button { background: #16213e; color: #fff; border: 1px solid #0f3460; padding: 6px 14px; border-radius: 4px; cursor: pointer; }
+header button { background: #16213e; color: #fff; border: 1px solid #0f3460; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; }
 header button:hover { background: #0f3460; }
-.status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
-.status-dot.online { background: #4caf50; }
-.status-dot.offline { background: #f44336; }
-.status-dot.unknown { background: #888; }
+.project-badge { font-size: 12px; background: #0f3460; padding: 4px 10px; border-radius: 4px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Project Selector */
+.project-selector { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 200; }
+.project-selector-inner { background: #fff; border-radius: 8px; padding: 20px; min-width: 480px; max-width: 600px; max-height: 80vh; overflow-y: auto; }
+.project-selector-inner h2 { margin-bottom: 12px; font-size: 16px; }
+.project-list { margin-bottom: 12px; }
+.project-item { display: flex; align-items: center; padding: 10px 12px; border: 1px solid #eee; border-radius: 4px; margin-bottom: 4px; cursor: pointer; }
+.project-item:hover { background: #f0f8ff; border-color: #1976d2; }
+.project-item .project-item-name { flex: 1; font-size: 14px; font-weight: 500; }
+.project-item .project-item-path { font-size: 11px; color: #999; }
+.project-item .check { color: #4caf50; margin-left: 8px; }
+.project-manual { display: flex; gap: 8px; margin-bottom: 12px; }
+.project-manual input { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+.project-manual button { background: #1976d2; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+.close-btn { background: #eee; border: none; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; }
 
 /* Main layout */
 .main { display: flex; flex: 1; overflow: hidden; }
 
 /* Sidebar */
-.sidebar { width: 240px; background: #fff; border-right: 1px solid #ddd; overflow-y: auto; }
-.sidebar h2 { padding: 16px 16px 8px; font-size: 14px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+.sidebar { width: 240px; background: #fff; border-right: 1px solid #ddd; overflow-y: auto; flex-shrink: 0; }
+.sidebar h2 { padding: 16px 16px 8px; font-size: 14px; color: #888; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 6px; }
+.count-badge { font-size: 11px; background: #e3f2fd; color: #1565c0; padding: 1px 6px; border-radius: 8px; }
 .page-list { padding: 8px; }
 .page-item { display: flex; align-items: center; padding: 10px 12px; border-radius: 6px; cursor: pointer; margin-bottom: 2px; transition: background 0.15s; }
 .page-item:hover { background: #f0f0f0; }
 .page-item.active { background: #e3f2fd; border-left: 3px solid #1976d2; }
 .page-item .page-name { flex: 1; font-size: 14px; }
-.page-item .page-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+.page-item .page-badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
 .page-item .page-badge.done { background: #e8f5e9; color: #2e7d32; }
 .page-item .page-badge.pending { background: #fff3e0; color: #e65100; }
-.page-item .page-badge .count { background: #e3f2fd; color: #1565c0; margin-left: 4px; }
 
 /* Content */
 .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }

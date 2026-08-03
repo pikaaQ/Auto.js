@@ -5,12 +5,11 @@ let dumpData = null;
 let selectedComponent = null;
 let componentList = [];
 let flow = { pages: [] };
+let projectRoot = null;
 
 // ─── 初始化 ─────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
-  await loadFlow();
-  renderPageList();
-  checkConnector();
+  await checkProject();
 });
 
 // ─── API 调用 ───────────────────────────────────────
@@ -18,12 +17,86 @@ async function api(method, path, body) {
   const opts = { method, headers: { "Content-Type": "application/json" } };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(path, opts);
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ error: r.statusText }));
+    throw new Error(err.error || r.statusText);
+  }
   return r.json();
+}
+
+// ─── 项目选择 ───────────────────────────────────────
+async function checkProject() {
+  try {
+    const config = await api("GET", "/api/projects/current");
+    if (config.project_root) {
+      projectRoot = config.project_root;
+      document.getElementById("project-name").textContent = config.project_name;
+      await loadFlow();
+      renderPageList();
+      return;
+    }
+  } catch {}
+  showProjectSelector();
+}
+
+async function showProjectSelector() {
+  const overlay = document.getElementById("project-selector");
+  overlay.style.display = "flex";
+  const list = document.getElementById("project-list");
+  list.innerHTML = "<p style='color:#999;font-size:13px;'>扫描中...</p>";
+
+  try {
+    const data = await api("GET", "/api/projects");
+    list.innerHTML = "";
+    if (!data.projects || data.projects.length === 0) {
+      list.innerHTML = "<p style='color:#999;font-size:13px;'>未找到项目，请手动输入路径</p>";
+      return;
+    }
+    data.projects.forEach(p => {
+      const div = document.createElement("div");
+      div.className = "project-item";
+      const isCurrent = p.path === data.current;
+      div.innerHTML = `
+        <div>
+          <div class="project-item-name">${p.name} ${isCurrent ? '<span class="check">✓</span>' : ''}</div>
+          <div class="project-item-path">${p.path}</div>
+        </div>
+      `;
+      div.onclick = () => selectProject(p.path);
+      list.appendChild(div);
+    });
+  } catch (e) {
+    list.innerHTML = `<p style='color:#f44336;font-size:13px;'>扫描失败: ${e.message}</p>`;
+  }
+}
+
+function closeProjectSelector() {
+  document.getElementById("project-selector").style.display = "none";
+}
+
+async function selectProject(path) {
+  await api("POST", "/api/projects/select", { path });
+  projectRoot = path;
+  document.getElementById("project-name").textContent = path.split("/").pop();
+  closeProjectSelector();
+  await loadFlow();
+  renderPageList();
+  document.getElementById("detail-title").textContent = "选择一个页面开始探索";
+}
+
+async function selectManualPath() {
+  const path = document.getElementById("manual-path").value.trim();
+  if (!path) return;
+  await selectProject(path);
 }
 
 // ─── 加载 flow ──────────────────────────────────────
 async function loadFlow() {
-  flow = await api("GET", "/api/flow");
+  try {
+    flow = await api("GET", "/api/flow");
+  } catch {
+    flow = { pages: [] };
+  }
 }
 
 async function refreshResult() {
@@ -33,17 +106,28 @@ async function refreshResult() {
 
 // ─── 渲染页面列表 ───────────────────────────────────
 async function renderPageList() {
-  const data = await api("GET", "/api/explore/pages");
+  let data = [];
+  try {
+    data = await api("GET", "/api/explore/pages");
+  } catch {
+    data = [];
+  }
   const list = document.getElementById("page-list");
   list.innerHTML = "";
+  document.getElementById("page-count").textContent = data.length;
+
+  if (data.length === 0) {
+    list.innerHTML = '<div style="padding:12px;color:#999;font-size:13px;text-align:center;">暂无页面<br>点击「+ 添加页面」</div>';
+    return;
+  }
+
   data.forEach(p => {
     const div = document.createElement("div");
     div.className = "page-item" + (p.id === currentPageId ? " active" : "");
     div.innerHTML = `
       <span class="page-name">${p.name}</span>
       <span class="page-badge ${p.explored ? 'done' : 'pending'}">
-        ${p.explored ? '✓ 已探索' : '待探索'}
-        ${p.transition_count > 0 ? `<span class="count">${p.transition_count}跳转</span>` : ''}
+        ${p.explored ? '✓' : '○'}
       </span>
     `;
     div.onclick = () => selectPage(p.id);
@@ -57,11 +141,10 @@ async function selectPage(pageId) {
   document.getElementById("btn-explore").disabled = false;
   document.getElementById("btn-refresh").disabled = false;
 
-  // 高亮
   document.querySelectorAll(".page-item").forEach(el => el.classList.remove("active"));
   document.querySelectorAll(".page-item").forEach(el => {
     if (el.querySelector(".page-name").textContent ===
-        flow.pages.find(p => p.id === pageId)?.name) {
+        (flow.pages.find(p => p.id === pageId)?.name || pageId)) {
       el.classList.add("active");
     }
   });
@@ -74,20 +157,30 @@ async function selectPage(pageId) {
 
 // ─── 加载探索结果 ───────────────────────────────────
 async function loadResult(pageId) {
-  const data = await api("GET", `/api/explore/${pageId}/result`);
+  let data;
+  try {
+    data = await api("GET", `/api/explore/${pageId}/result`);
+  } catch {
+    // 页面尚未探索
+    document.getElementById("placeholder").style.display = "block";
+    document.getElementById("placeholder").innerHTML = "<p>该页面尚未探索</p>";
+    document.getElementById("image-wrapper").style.display = "none";
+    document.getElementById("toolbar").style.display = "none";
+    document.getElementById("transitions-panel").style.display = "none";
+    return;
+  }
 
   document.getElementById("placeholder").style.display = "none";
   document.getElementById("image-wrapper").style.display = "none";
   document.getElementById("toolbar").style.display = "none";
   document.getElementById("transitions-panel").style.display = "none";
 
-  if (data.error) {
+  if (!data.files || !data.files["screenshot.png"]) {
     document.getElementById("placeholder").style.display = "block";
     document.getElementById("placeholder").innerHTML = "<p>该页面尚未探索</p>";
     return;
   }
 
-  // 显示截图
   const img = document.getElementById("screenshot-img");
   img.src = `/api/explore/${pageId}/screenshot.png?t=${Date.now()}`;
   img.onload = () => {
@@ -98,18 +191,16 @@ async function loadResult(pageId) {
     renderOverlay();
   };
 
-  // 保存数据
   ocrData = data.ocr || [];
   dumpData = null;
   if (data.dump) {
     dumpData = parseDumpXml(data.dump);
   }
 
-  // 渲染跳转
   renderTransitions(data.transitions || []);
 }
 
-// ─── 解析 Dump XML（简化版） ────────────────────────
+// ─── 解析 Dump XML ─────────────────────────────────
 function parseDumpXml(xml) {
   const nodes = [];
   const regex = /<node\s+([^>]+)>/g;
@@ -122,7 +213,6 @@ function parseDumpXml(xml) {
       attrs[am[1]] = am[2];
     }
     if (attrs.bounds) {
-      // 解析 bounds="[left,top][right,bottom]"
       const bm = attrs.bounds.match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
       if (bm) {
         attrs._left = parseInt(bm[1]);
@@ -136,17 +226,16 @@ function parseDumpXml(xml) {
   return nodes;
 }
 
-// ─── Canvas 设置 ────────────────────────────────────
+// ─── Canvas ─────────────────────────────────────────
 function setupCanvas() {
   const img = document.getElementById("screenshot-img");
   const canvas = document.getElementById("overlay-canvas");
   canvas.width = img.naturalWidth;
   canvas.height = img.naturalHeight;
-  canvas.style.width = img.style.width || "100%";
-  canvas.style.height = img.style.height || "100%";
+  canvas.style.width = "100%";
+  canvas.style.height = "100%";
 }
 
-// ─── 切换叠加层 ─────────────────────────────────────
 function toggleOverlay() {
   renderOverlay();
 }
@@ -158,15 +247,16 @@ function renderOverlay() {
 
   const showOcr = document.getElementById("toggle-ocr").checked;
   const showDump = document.getElementById("toggle-dump").checked;
-
   componentList = [];
 
   if (showOcr) {
     ocrData.forEach(item => {
       const b = item.bounds;
+      if (!b) return;
       const x = b.left, y = b.top, w = b.right - b.left, h = b.bottom - b.top;
+      if (w <= 0 || h <= 0) return;
       const id = `ocr_${item.label}_${x}_${y}`;
-      componentList.push({ id, type: "ocr", label: item.label, bounds: b });
+      componentList.push({ id, type: "ocr", label: item.label, bounds: { left: x, top: y, right: b.right, bottom: b.bottom } });
 
       ctx.strokeStyle = "#f44336";
       ctx.lineWidth = 2;
@@ -184,6 +274,7 @@ function renderOverlay() {
   if (showDump && dumpData) {
     dumpData.forEach(node => {
       const x = node._left, y = node._top, w = node._right - node._left, h = node._bottom - node._top;
+      if (w <= 0 || h <= 0) return;
       const label = node.text || node.desc || node.className || "";
       if (!label) return;
       const id = `dump_${label}_${x}_${y}`;
@@ -205,8 +296,9 @@ function renderOverlay() {
   }
 }
 
-// ─── Canvas 点击事件 ────────────────────────────────
+// ─── Canvas 点击 ────────────────────────────────────
 document.getElementById("overlay-canvas").addEventListener("click", (e) => {
+  if (componentList.length === 0) return;
   const canvas = e.target;
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvas.width / rect.width;
@@ -214,7 +306,6 @@ document.getElementById("overlay-canvas").addEventListener("click", (e) => {
   const mx = (e.clientX - rect.left) * scaleX;
   const my = (e.clientY - rect.top) * scaleY;
 
-  // 找到点击的组件
   let clicked = null;
   for (const c of componentList) {
     const b = c.bounds;
@@ -245,7 +336,6 @@ function showTransitionModal(component) {
       select.appendChild(opt);
     }
   });
-  // 添加"自定义"选项
   const custom = document.createElement("option");
   custom.value = "__custom__";
   custom.textContent = "手动输入...";
@@ -267,7 +357,6 @@ async function confirmTransition() {
   if (target === "__custom__") {
     targetId = prompt("输入目标页面ID:");
     if (!targetId) return;
-    // 自动添加页面
     await api("POST", "/api/flow/page", { id: targetId, name: targetId });
     await loadFlow();
   }
@@ -286,7 +375,7 @@ async function confirmTransition() {
   renderPageList();
 }
 
-// ─── 渲染跳转列表 ───────────────────────────────────
+// ─── 渲染跳转 ───────────────────────────────────────
 function renderTransitions(transitions) {
   const list = document.getElementById("transitions-list");
   list.innerHTML = "";
@@ -308,12 +397,10 @@ function renderTransitions(transitions) {
 }
 
 async function deleteTransition(index) {
-  // 简单实现：重新保存 flow 去掉该项
   const page = flow.pages.find(p => p.id === currentPageId);
   if (!page) return;
   page.transitions.splice(index, 1);
-  // 直接写回 flow.json
-  await fetch("/api/flow", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(flow) });
+  await api("PUT", "/api/flow", flow);
   await loadResult(currentPageId);
   renderPageList();
 }
@@ -324,19 +411,34 @@ async function explorePage() {
   document.getElementById("btn-explore").disabled = true;
   document.getElementById("btn-explore").textContent = "⏳ 探索中...";
 
-  const resp = await api("POST", "/api/explore", { page_id: currentPageId });
+  try {
+    await api("POST", "/api/explore", { page_id: currentPageId });
+  } catch (e) {
+    alert("探索失败: " + e.message);
+    document.getElementById("btn-explore").disabled = false;
+    document.getElementById("btn-explore").textContent = "🚀 探索";
+    return;
+  }
 
-  // 轮询结果
   let attempts = 0;
   const poll = setInterval(async () => {
     attempts++;
-    const status = await api("POST", "/api/explore/poll", { page_id: currentPageId });
-    if (status.status === "ok" || status.status === "error" || status.status === "shizuku_failed" || attempts > 30) {
+    try {
+      const status = await api("POST", "/api/explore/poll", { page_id: currentPageId });
+      if (status.status === "ok" || status.status === "error" || status.status === "shizuku_failed" || attempts > 30) {
+        clearInterval(poll);
+        document.getElementById("btn-explore").disabled = false;
+        document.getElementById("btn-explore").textContent = "🚀 探索";
+        if (status.status === "shizuku_failed") {
+          alert("Shizuku 未运行，请检查手机");
+        }
+        await loadResult(currentPageId);
+        renderPageList();
+      }
+    } catch {
       clearInterval(poll);
       document.getElementById("btn-explore").disabled = false;
       document.getElementById("btn-explore").textContent = "🚀 探索";
-      await loadResult(currentPageId);
-      renderPageList();
     }
   }, 2000);
 }
@@ -346,9 +448,13 @@ async function addPage() {
   const id = prompt("输入页面ID（英文，如 home）：");
   if (!id) return;
   const name = prompt("输入页面名称（中文，如 主页）：");
-  await api("POST", "/api/flow/page", { id, name: name || id });
-  await loadFlow();
-  renderPageList();
+  try {
+    await api("POST", "/api/flow/page", { id, name: name || id });
+    await loadFlow();
+    renderPageList();
+  } catch (e) {
+    alert(e.message);
+  }
 }
 
 // ─── 导出 ───────────────────────────────────────────
@@ -359,17 +465,4 @@ async function exportFlow() {
   a.href = URL.createObjectURL(blob);
   a.download = "flow.json";
   a.click();
-  alert("flow.json 已导出");
-}
-
-// ─── 检查连接 ───────────────────────────────────────
-async function checkConnector() {
-  try {
-    const r = await fetch("/api/flow");
-    if (r.ok) {
-      document.getElementById("connector-status").className = "status-dot online";
-    }
-  } catch {
-    document.getElementById("connector-status").className = "status-dot offline";
-  }
 }

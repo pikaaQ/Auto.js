@@ -261,20 +261,20 @@ $CALL "{\"cmd\":\"pull_file\",\"path\":\"{dir_path}/.logs/autojs-log4j.txt\",\"l
 
 ### 探索工具（手动快速探索）
 
-`devtools/explorer/` 提供了一个 Web 工具，用于手动快速探索页面并记录结果，适合需要大批量页面探索的场景。
+`explorer/` 目录提供了一个 Web 工具，用于手动快速探索页面并记录结果。它是全局常驻服务，与具体项目解耦，启动后可在浏览器中选择项目进行操作。
 
 **启动：**
 ```bash
-python3 ${skill_base_dir}/autoxjs-developer/sample-project/devtools/explorer/server.py \\
-  --project /path/to/your/project --port 9317 --http-port 5000
+python3 ${skill_base_dir}/autoxjs-developer/explorer/server.py --http-port 5000
 ```
 
 **功能：**
-1. 在 `flow.json` 中定义所有需探索的页面及跳转关系
-2. 在 Web 页面（`http://localhost:5000`）上选择页面 → 点击「探索」→ 自动执行 Shizuku 截图 + OCR + Dump
-3. 探索结果（截图、OCR、Dump）保存在 `explore/{页面ID}/` 目录
-4. 在页面上切换 OCR/DUMP 叠加层，查看组件识别结果
-5. 点击组件标注跳转，自动记录到 `flow.json`
+1. 启动后在浏览器打开 `http://localhost:5000`，选择项目
+2. 在 `flow.json` 中定义所有需探索的页面及跳转关系（存储在项目 `docs/flow.json`）
+3. 选择页面 → 点击「探索」→ 自动执行 Shizuku 截图 + OCR + Dump
+4. 探索结果保存在项目 `docs/explore/{页面ID}/` 目录
+5. 在页面上切换 OCR/DUMP 叠加层，查看组件识别结果
+6. 点击组件标注跳转，自动记录到 `flow.json`
 
 **流程：**
 1. 先规划探索流程，通过「+ 添加页面」添加所有待探索页面
