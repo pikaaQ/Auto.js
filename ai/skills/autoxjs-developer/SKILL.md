@@ -33,7 +33,7 @@ cp -r ${skill_base_dir}/autoxjs-developer ~/.config/opencode/skills/
 ## 项目结构约定
 
 ### 项目结构
-项目 follow `sample-project/` 的目录结构来规划，新建项目时使用实际项目名代替 `{project}`，项目从语法上来说使模块化的node项目：
+项目 follow `sample-project/` 的目录结构来规划, 目录结构如下：
 
 ```
 {project}/
@@ -45,7 +45,11 @@ cp -r ${skill_base_dir}/autoxjs-developer ~/.config/opencode/skills/
 │   ├── ScreenCapturePermissionUtil.js  ← 截图权限管理
 │   ├── ShizukuUtils.js       ← Shizuku 绑定 + 无障碍服务
 │   └── PrintExceptionStack.js          ← 异常堆栈打印
-├── actions/                  ← 操作步骤，按功能拆分模块
+├── actions/                  ← 操作步骤，包括Pages.js页面定义文件,子目录pages下方每个页面的单元操作文件,以及为达成不同目标的操作组合文件
+│   ├── Pages.js              ← 页面名定义常量，`checkPage()` 方法判断当前所在的页面
+│   ├── SignIn.js             ← 为了达成一个流程(当前流程是签到)所做的一系列操作组合.
+│   └── pages/                ← 在不同页面上的操作,每个页面多个操作封装成一个页面的Actions文件
+│       └── SamplePageActions.js ← 在单页面上的原子操作合集(示例，实际按{页面名}命名，如HomeActions.js)
 ├── ui/                       ← UI 界面相关
 │   └── assets/               ← UI 资源文件
 ├── docs/                     ← 流程文档、页面分析（不推送至手机）
@@ -55,6 +59,7 @@ cp -r ${skill_base_dir}/autoxjs-developer ~/.config/opencode/skills/
 │   └── pages/                ← 页面分析记录
 │       └── 页面名.md
 ├── devtools/                 ← 开发工具脚本（不推送至手机）
+├── test/                     ← 单元测试脚本
 ├── phone_data/               ← 从手机拉取的文件（日志、截图等，不推送至手机）
 ├── .omo/                     ← opencode 配置
 ├── .git                      ← 版本控制
@@ -62,12 +67,25 @@ cp -r ${skill_base_dir}/autoxjs-developer ~/.config/opencode/skills/
 └── ...                       ← 其他辅助文件
 ```
 
-**项目的模块化方式与nodejs稍有不同，需要使用`lib/` 下的工具模块 `singletonRequirer` 代替 `require` 导入，具体使用方式可见 lib.md**
+新建项目时可以直接将`sample-project/`复制后使用实际项目名代替 `{project}`, 复制后可以将部分样板代码(一般文件名带有 `sample` 或 `template`的)删除.
 
-### 项目结构首次推送到手机
+如果是现有项目适配和重构, 先将`sample-project/`中 `lib` 和 `devtools` 目录和下面的工具文件同步到项目,然后按功能模块重构.
 
-首次使用 `save_project` 推送整个项目目录到手机后就可以开始调试开发了。注意 `run_project` 是直接运行项目，并不建议在推送时使用。`project.json` 的 `ignore` 字段会跳过无需推送的文件。
+**项目从语法上来说使模块化的node项目, 但是项目的模块化方式与nodejs稍有不同，需要使用`lib/` 下的工具模块 `singletonRequirer` 代替 `require` 导入，具体使用方式可见 lib.md**
 
+## 与手机协同开发
+
+需要先将项目推送到手机,并完成脚本根目录探测与缓存,作为项目协同的初始化. 
+然后再按照本文档规定的开发方法和要求来完成后续开发流程. 在开发过程中会用到脚本推送/运行,项目推送/运行,手机上的日志拉取等对应指令.
+
+### 首次推送到手机,完成手机上项目的初始化
+
+使用 `save_project` (具体使用方法见 [协同指令和脚本](#id-协同指令和脚本anchor) 部分)推送整个项目目录到手机。
+
+`project.json` 中的 `ignore` 列表用于控制推送时跳过哪些文件/目录（如 `docs/`、`devtools/`、`phone_data/`），减少推送流量。
+后续 `ui/assets/` 未发生变化时，可临时在推送时将其加入 `ignore` 以加速推送，减少推送流量。
+
+project.json是项目定义文件,内容如下:
 ```json
 {
   "name": "sample-project",
@@ -82,10 +100,7 @@ cp -r ${skill_base_dir}/autoxjs-developer ~/.config/opencode/skills/
 }
 ```
 
-`project.json` 中的 `ignore` 列表用于控制推送时跳过哪些文件/目录（如 `docs/`、`devtools/`、`phone_data/`），减少推送流量。`ui/assets/` 未发生变化时，可临时将其加入 `ignore` 以加速推送。
-
-## 与手机协同开发
-### 脚本根目录探测与缓存（首次开发前执行）
+### 脚本根目录探测与缓存
 
 开发过程中的日志拉取、图片保存等操作需要知道手机上的脚本根目录。此路径**不是固定的**，取决于 App 语言（中文 `/脚本/`、英文 `/Scripts/`）和用户自定义设置。
 
@@ -93,31 +108,25 @@ cp -r ${skill_base_dir}/autoxjs-developer ~/.config/opencode/skills/
 
 #### 探测方法
 
+使用 `devtools/detect_root_dir.sh` 脚本一步完成探测与自动清理：
+
 ```bash
 CALL="python3 ${skill_base_dir}/autoxjs-connector/call.py"
-
-# Step A: 推送探测脚本（fire-and-forget）
-# run 执行时 working directory = Pref.getScriptDirPath()
-# 因此 files.cwd() 就是实际脚本目录
-$CALL '{"cmd":"run","script":"files.write(\"/sdcard/.sdir.txt\", files.cwd());","name":".detect_sdir.js","wait":false}' --port 9317
-sleep 1.5
-
-# Step B: 拉取探测结果，提取 local_path 并读取文件内容
-$CALL '{"cmd":"pull_file","path":"/sdcard/.sdir.txt"}' --port 9317 > /tmp/pull_result.json
-LOCAL_FILE=$(python3 -c "import json; print(json.load(open('/tmp/pull_result.json'))['result']['local_path'])")
-dir_path=$(cat "$LOCAL_FILE" 2>/dev/null || echo "/storage/emulated/0/脚本")
-echo "脚本根目录: $dir_path"   # 记下来，后续复用
+cp ${skill_base_dir}/autoxjs-developer/sample-project/devtools/detect_root_dir.sh ./devtools/
+DIR_PATH=$(bash ./devtools/detect_root_dir.sh --call "$CALL" --port 9317)
+echo "脚本根目录: $DIR_PATH"   # 记下来，后续复用
 ```
 
-日志文件路径格式：`{dir_path}/.logs/autojs-log4j[-debug].txt`
+日志文件路径格式：`{dir_path}/.logs/autojs-log4j[-debug].txt`,绝大部分时候都是release构建.
 
 - debug 构建 → `autojs-log4j-debug.txt`
 - release 构建 → `autojs-log4j.txt`
 
-### 推送脚本到手机
+<a id="id-协同指令和脚本anchor"></a>
+### 与手机协同的指令和脚本
 
-#### 推送并自动执行（不会保存到手机）
-
+#### 推送并直接执行（不会保存到手机）
+推送并直接执行的脚本需要时内联的(非模块化的),一般用于探索,或devtools中要在手机上执行的脚本,他们与项目中用到的模块没有依赖关系.
 ```bash
 CALL="python3 ${skill_base_dir}/autoxjs-connector/call.py"
 SCRIPT=$(cat 本地脚本.js)
@@ -126,23 +135,59 @@ $CALL "{\"cmd\":\"run\",\"name\":\"my_script.js\",\"script\":$(python3 -c "impor
 sleep 3  # 等日志写入
 ```
 
+> ⚠️ **`run` 命令不回 `command_result`**，`wait=true` 会超时。必须用 `wait=false` + sleep,通过执行完后读取日志检查执行情况.
+
 #### 推送并保存到手机
+推送并保存到手机再执行的脚本,一般用于test下的单元测试脚本,他们依赖项目中的代码模块.
+
+`save` 命令只支持保存到 `{dir_path}` 根目录，因此需先保存到临时文件名，再移动到目标位置。路径根据脚本在项目中的位置自动推导。如推送 `actions/my_action.js` 整体脚本如下：
 
 ```bash
 CALL="python3 ${skill_base_dir}/autoxjs-connector/call.py"
-SCRIPT=$(cat 本地脚本.js)
-$CALL "{\"cmd\":\"command\",\"command\":\"save\",\"params\":{\"name\":\"手机端名称.js\",\"script\":$(python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))" <<< "$SCRIPT")},\"wait\":false}" --port 9317
+
+# PC项目根目录（project.json 所在目录）
+PROJECT_ROOT="."
+# 本地脚本路径（相对于项目根目录）
+SCRIPT_FILE="actions/my_action.js"
+
+# 从 project.json 读取项目名,项目名是该项目再手机上的顶层目录
+PROJECT_NAME=$(python3 -c "import json; print(json.load(open('$PROJECT_ROOT/project.json'))['name'])" 2>/dev/null || echo "project")
+
+# 计算脚本在项目中的相对路径
+REL_PATH=$(python3 -c "import os.path; print(os.path.relpath('$SCRIPT_FILE', '$PROJECT_ROOT'))" 2>/dev/null || basename "$SCRIPT_FILE")
+
+# 手机端目标路径: {project_name}/{REL_PATH}
+PHONE_PATH="$PROJECT_NAME/$REL_PATH"
+DIR_PART=$(dirname "$PHONE_PATH")
+
+# 1. 确保手机子目录存在
+$CALL "{\"cmd\":\"exec\",\"script\":\"files.ensureDir('$DIR_PART');\",\"wait\":true}" --port 9317
+
+# 2. save 只能保存到根目录，用临时文件名保存
+SCRIPT=$(cat "$SCRIPT_FILE")
+TMP_NAME=".save_tmp_$(date +%s).js"
+$CALL "{\"cmd\":\"command\",\"command\":\"save\",\"params\":{\"name\":\"$TMP_NAME\",\"script\":$(python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))" <<< "$SCRIPT")},\"wait\":false}" --port 9317
+sleep 1
+
+# 3. 移动到目标路径（move 会删除源文件）
+$CALL "{\"cmd\":\"run\",\"script\":\"files.move('$TMP_NAME','$PHONE_PATH');\",\"name\":\".move_tmp.js\",\"wait\":false}" --port 9317
 ```
+
+> 若移动失败，残留的 `.save_tmp_*.js` 临时文件可在手机 `{dir_path}` 根目录手动清理。
+
+- `project.json` 中 `name` 为 `my-project` → 例：`actions/my_action.js` → 目标 `{dir_path}/my-project/actions/my_action.js`
+- 例：`main.js`（根目录） → 目标 `{dir_path}/my-project/main.js`
 
 #### 远程启动已保存的脚本
 
+需注意 推送并保存到手机 将脚本进行了移动, 这种情况下,已保存的脚本路径需要是 移动到的实际位置相对{dir_path}的路径,如上例子应该是 `my-project/actions/my_action.js`
 ```bash
 CALL="python3 ${skill_base_dir}/autoxjs-connector/call.py"
-$CALL '{"cmd":"run","name":"已保存的脚本.js","wait":false}' --port 9317
+$CALL '{"cmd":"run","name":"已保存的脚本路径","wait":false}' --port 9317
 sleep 3  # 等日志写入
 ```
 
-> ⚠️ **`run` 命令不回 `command_result`**，`wait=true` 会超时。必须用 `wait=false` + sleep。
+> ⚠️ **`run` 命令不回 `command_result`**，`wait=true` 会超时。必须用 `wait=false` + sleep,通过执行完后读取日志检查执行情况.
 
 #### 推送项目到手机
 
@@ -172,10 +217,12 @@ $CALL "{\"cmd\":\"pull_file\",\"path\":\"{dir_path}/.logs/autojs-log4j.txt\",\"l
 ### 开发流程：规划 → 探索 → 单元开发 → 单元验证 → 完成脚本 → 用户测试
 
 1. 先根据用户描述，规划脚本流程, 并和用户确认，看用户有没有补充，直至流程清晰并得到用户确认，保留流程文档，后续根据文档来进行开发。
-2. 开始探索流程中出现的每个页面，探索方式见 探索与验证方法 章节。对探索的每个页面进行组件分析得到充分认知，判断组件操作后的结果，并将页面组件记录到组件文档。完成当前页面后，自动用脚本操作进入下一个页面，循环操作直到记录所有页面。
-3. 基于2中对每个页面的深入研究，生成 `checkPage()` 方法。探索时在 `docs/pages/` 下为每个页面命名并记录特征，在 `actions/Pages.js` 中将这些页面名定义为常量，`checkPage()` 根据 OCR/组件树特征判断当前页面，返回对应的页面常量或 `"unknown"`。模板代码见 `sample-project/actions/Pages.js`，引入后通过 `singletonRequirer` 导入使用。这个方法可供每个动作的检查和验证环节使用（知道当前在哪个页面很重要）。
-4. 根据流程和页面的研究结果，依次开发流程中每个步骤的脚本，开发完成后验证单个步骤是否复合要求，验证方式见 探索与验证方法 章节。
-5. 将所有步骤根据流程进行组合，完成脚本编写，提示用户测试验证。
+2. 开始规划探索, 规划页面探索流程,并和用户确认. 确认后生成探索规划文档.
+3. 根据探索规划文档, 开始探索流程中出现的每个页面，探索方式见 探索与验证方法 章节。对探索的每个页面进行组件分析得到充分认知，记录每个页面的 名字/组件位置/组件特点/文本等,判断组件操作后的结果，并将页面组件记录到组件文档`docs/pages/`。完成当前页面后，自动用脚本操作进入下一个页面，循环操作直到记录所有页面。
+4. 基于3中对单个页面的深入研究,生成每个页面的单元操作脚本`{pageNaem}Actions.js`,脚本中每个函数包含 定位元素+操作元素 的原子操作, 开发完成后验证单个操作是否达成目的, 验证方式见 探索与验证方法 章节, 可以 边探索边生成边验证。
+5. 所有页面探索完成后, 基于对每个页面的深入研究，生成 `actions/Pages.js`, `actions/Pages.js` 中包含每个页面名常量(可以直观关联到对应的 `{pageNaem}Actions.js`),包含`checkPage()` 方法: 根据 OCR/组件树特征判断当前页面，返回对应的页面常量或 `"unknown"`。模板代码见 `sample-project/actions/Pages.js`, 这个方法可供每个动作的检查和验证环节使用（知道当前在哪个页面很重要）。
+6. 根据流程和页面的研究结果，开发流程的操作的脚本(一系列原子操作的组合), 如果流程分支复杂,可以将流程分解为多个子流程的操作脚本, 然后用总流程管理子流程.
+7. 完成脚本编写，提示用户测试验证。
 
 ### 探索与验证方法
 
@@ -185,7 +232,7 @@ $CALL "{\"cmd\":\"pull_file\",\"path\":\"{dir_path}/.logs/autojs-log4j.txt\",\"l
 
 **探索页面时， 应该尽可能多的获取到全部页面信息来进行分析然后保存到文档，而不是仅针对当前任务中的特征来分析，因为尽可能多的页面信息可以使脚本更健壮，也方便后续测试和维护。**
 
-`devtools/` 下提供了通用探索脚本模板 `explore_template.js`，复制后修改 TODO 部分即可使用。模板已包含 `=== 开始 ===` 和 `=== 完毕 ===` 日志标记。
+使用 `devtools/explore_template.js` 脚本模板进行检查(如果自己进入页面,需要复制后修改 TODO 使用,如果用户已经进入指定页面,可以直接使用)：
 
 探索脚本逻辑为：
 1. 检查项目下有没有tmp目录，没有就先创建
@@ -208,7 +255,7 @@ $CALL "{\"cmd\":\"pull_file\",\"path\":\"{dir_path}/.logs/autojs-log4j.txt\",\"l
 
 
 ### 开发要求与约定：
-对非devtool下的代码(即在项目中实际运行的代码)，在开发时有如下要求：
+对非devtool下的代码(即在项目中实际运行的代码,主要包括main.js, actions/, test/ 下代码)，在开发时有如下要求：
 
 #### 整体流程，需要模块清晰，与流程文档一致，尽量将一组相关的操作封装为一个函数
 
@@ -219,7 +266,7 @@ $CALL "{\"cmd\":\"pull_file\",\"path\":\"{dir_path}/.logs/autojs-log4j.txt\",\"l
 ##### 授权无障碍时先使用 Shizuku 管理 `ShizukuUtils`，如果绑定失败或授权失败再使用auto()申请人工授权
 
 
-#### 对流程的单个步骤，需要采取 检查 → 执行 → 验证 的执行三步方案闭环：
+#### 对流程的操作脚本，需要采取 检查 → 执行 → 验证 的执行三步方案闭环：
 
 - **检查**：判断当前所在页面是否符合流程要求，确认是否需要执行操作
 - **执行**：执行具体操作
@@ -229,53 +276,30 @@ $CALL "{\"cmd\":\"pull_file\",\"path\":\"{dir_path}/.logs/autojs-log4j.txt\",\"l
 
 代码中使用注释体现每一步操作的流程结构：
 
-```javascript
-// === Step 1: 打开某 App ===
-// [检查] App 是否已在前台
-if (!currentPackage().contains("com.example.app")) {
-    // [执行] 打开 App
-    app.launchPackage("com.example.app");
-    // [验证] App 已打开
-    waitForPackage("com.example.app", 5000);
-}
+参考 `actions/SignIn_sample.js`，其中演示了如何在 `[检查]` / `[执行]` / `[验证]` 三段中使用 `Pages.checkPage()` 判断页面状态。
 
-// === Step 2: 跳过开屏广告 ===
-// [检查] 广告是否存在
-let ad = text("跳过").findOne(2000);
-if (ad) {
-    // [执行] 点击跳过
-    ad.click();
-    // [验证] 菜单已出现（= 下一步的检查，合并到 Step 3）
-}
-// [验证] 菜单是否出现
-let menu = desc("目标菜单").findOne(3000);
+#### 对每个Page中的Actions中的操作的定位方案做要求
 
-// === Step 3: 点击菜单项 ===
-// [检查] 菜单是否出现（与上一步验证合并，无需重复）
-// [执行] 点击菜单
-menu.click();
-// [验证] 使用页面特征检查是否已到达目标页面
-Pages.checkPage() == Pages.PAGES.HOME;
-```
-
-#### 操作定位方案
-
-代码中，如果需要定位目标元素，需按以下优先级选择操作定位方式，这些方式在探索页面时就要考虑：
+代码中，如果需要定位目标元素，需按以下优先级选择操作定位方式，这些方式在探索页面时就要考虑哪种更可靠：
 
 1. **🥇 组件查找（首选）** — `desc()` / `text()` / `className()` / `id()` 等选择器
    - 优点：稳定、不受屏幕分辨率影响
+   - 缺点: 可能会有隐藏的组件干扰定位(如有些app开屏广告时就可以通过组件查找找到menu,但实际看不到且点不到menu)
    - 使用：`desc("按钮").findOne(3000)`、`textContains("确认").click()`
 2. **🥈 OCR 文字识别（mlkocr）** — 当组件无 desc/text 属性时使用
    - 使用：截图 → 裁剪 → mlkocr 识别文字坐标 → 点击坐标
    - **正式脚本**中使用 `captureScreen()` 截图
    - 因为 mlkocr 识别结果不理想，使用**模糊匹配**，每个组件的模糊匹配可以单独封装成一个函数：
-     - **目标文字量多**（≥3个字）：匹配词组量达到目标词组的 60% 以上即通过
+     - **目标文字量多**（≥3个字）：匹配词组量达到目标词组的 60% 以上,且匹配到的词组前后顺序与标准语句的前后一致, 即通过
      - **目标文字量少**（<3个字）：所有文字相似的结果都纳入匹配，只要命中其中一个即通过
 3. **🥉 找色** — 当 OCR 也无法获取有效信息时使用
    - 从截图中取特征颜色点，使用 `findColor()` / `findColorEquals()` 定位
 4. **🏅 找图（最后手段）** — 以上均不行时
    - 裁剪截图中特征区域为模板图，使用 `findImage()` 匹配
 
+#### 对每个Page中的Actions中的操作的点击方案做要求
+
+参考lib.md, **需要使用指定的通用方法进行点击,不可使用元素的click方法**
 
 #### 脚本参考
 
@@ -319,9 +343,6 @@ CALL="python3 ${skill_base_dir}/autoxjs-connector/call.py"
 # 清理保存到手机的诊断脚本（如果通过 save 保存过）
 $CALL "{\"cmd\":\"run\",\"script\":\"files.remove('{dir_path}/diagnose.js');\",\"name\":\".cleanup.js\",\"wait\":false}" --port 9317
 sleep 1
-# 清理探测残留（首次探测时写入的 .sdir.txt）
-$CALL '{"cmd":"run","script":"files.remove(\"/sdcard/.sdir.txt\");","name":".cleanup_sdir.js","wait":false}' --port 9317
-sleep 1
 # 清理手机上的临时清理脚本自身
-$CALL '{"cmd":"run","script":"files.remove(files.cwd() + \"/.cleanup.js\");\nfiles.remove(files.cwd() + \"/.cleanup_sdir.js\");","name":".cleanup_self.js","wait":false}' --port 9317
+$CALL '{"cmd":"run","script":"files.remove(files.cwd() + \"/.cleanup.js\");","name":".cleanup_self.js","wait":false}' --port 9317
 ```
