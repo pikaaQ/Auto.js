@@ -151,7 +151,7 @@ class AutoJSServer:
         )
         sock = next(iter(self._server.sockets))
         addr = sock.getsockname()
-        print(json.dumps({
+        print(_ts() + " " + json.dumps({
             "event": "server_started",
             "ws": f"ws://{self.host}:{self.port}",
             "ctrl": f"tcp://127.0.0.1:{self.ctrl_port}",
@@ -181,7 +181,7 @@ class AutoJSServer:
                 else:
                     await self._on_message(device, raw)
         except Exception as e:
-            print(json.dumps({"event": "device_disconnected", "reason": str(e)}))
+            print(_ts() + " " + json.dumps({"event": "device_disconnected", "reason": str(e)}))
             sys.stdout.flush()
         finally:
             if self.device is device:
@@ -202,7 +202,7 @@ class AutoJSServer:
             device.client_version = data.get("client_version", 0)
             device.app_version = data.get("app_version", "")
             device.app_version_code = data.get("app_version_code", 0)
-            print(json.dumps({
+            print(_ts() + " " + json.dumps({
                 "event": "device_connected",
                 "device_name": device.device_name,
                 "app_version": device.app_version,
@@ -543,7 +543,7 @@ def main():
     try:
         asyncio.run(run_server())
     except KeyboardInterrupt:
-        print(json.dumps({"event": "server_stopped"}))
+        print(_ts() + " " + json.dumps({"event": "server_stopped"}))
 
 
 if __name__ == "__main__":

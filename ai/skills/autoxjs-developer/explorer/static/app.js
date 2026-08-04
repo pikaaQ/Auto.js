@@ -244,7 +244,7 @@ function renderOverlay() {
       if (w <= 0 || h <= 0) return;
       componentList.push({ id: `ocr_${item.label}_${x}_${y}`, type: "ocr", label: item.label, bounds: { left: x, top: y, right: b.right, bottom: b.bottom } });
       ctx.strokeStyle = "#f44336"; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
-      var fs = Math.max(10, Math.min(h / 2, 24));
+      var fs = Math.max(10, h / 2);
       ctx.fillStyle = "rgba(244, 67, 54, 0.7)"; ctx.font = "bold " + fs + "px sans-serif";
       var tw = ctx.measureText(item.label).width;
       var bh = fs + 4;
@@ -259,7 +259,7 @@ function renderOverlay() {
       const label = node.text || node.desc || node.className || ""; if (!label) return;
       componentList.push({ id: `dump_${label}_${x}_${y}`, type: "dump", label, bounds: { left: x, top: y, right: node._right, bottom: node._bottom } });
       ctx.strokeStyle = "#9c27b0"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 2]); ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
-      var fs = Math.max(10, Math.min(h / 2, 24));
+      var fs = Math.max(10, h / 2);
       ctx.fillStyle = "rgba(156, 39, 176, 0.7)"; ctx.font = "bold " + fs + "px sans-serif";
       var tw = ctx.measureText(label).width;
       var bh = fs + 4;
