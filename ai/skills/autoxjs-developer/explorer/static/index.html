@@ -50,33 +50,34 @@
             <button id="btn-refresh" onclick="refreshResult()" disabled>🔄 刷新</button>
           </div>
         </div>
-
-        <div class="canvas-container" id="canvas-container">
-          <div class="placeholder" id="placeholder">
-            <p>选择项目 → 添加页面 → 点击「探索」</p>
-            <p>探索完成后截图将在此显示</p>
+        <div class="content-body">
+          <div class="canvas-area">
+            <div class="canvas-container" id="canvas-container">
+              <div class="placeholder" id="placeholder">
+                <p>选择项目 → 添加页面 → 点击「探索」</p>
+                <p>探索完成后截图将在此显示</p>
+              </div>
+              <div id="image-wrapper" style="display:none; position:relative;">
+                <img id="screenshot-img" crossorigin="anonymous">
+                <canvas id="overlay-canvas"></canvas>
+              </div>
+            </div>
+            <div class="toolbar" id="toolbar" style="display:none;">
+              <label class="toggle">
+                <input type="checkbox" id="toggle-ocr" onchange="toggleOverlay()">
+                <span class="toggle-label">📝 OCR</span>
+              </label>
+              <label class="toggle">
+                <input type="checkbox" id="toggle-dump" onchange="toggleOverlay()">
+                <span class="toggle-label">📋 DUMP</span>
+              </label>
+              <span class="toolbar-hint">点击组件标注跳转</span>
+            </div>
           </div>
-          <div id="image-wrapper" style="display:none; position:relative;">
-            <img id="screenshot-img" crossorigin="anonymous">
-            <canvas id="overlay-canvas"></canvas>
+          <div class="transitions-panel" id="transitions-panel" style="display:none;">
+            <h3>页面跳转</h3>
+            <div id="transitions-list"></div>
           </div>
-        </div>
-
-        <div class="toolbar" id="toolbar" style="display:none;">
-          <label class="toggle">
-            <input type="checkbox" id="toggle-ocr" onchange="toggleOverlay()">
-            <span class="toggle-label">📝 OCR</span>
-          </label>
-          <label class="toggle">
-            <input type="checkbox" id="toggle-dump" onchange="toggleOverlay()">
-            <span class="toggle-label">📋 DUMP</span>
-          </label>
-          <span class="toolbar-hint">点击组件标注跳转</span>
-        </div>
-
-        <div class="transitions" id="transitions-panel" style="display:none;">
-          <h3>页面跳转</h3>
-          <div id="transitions-list"></div>
         </div>
       </div>
     </main>
