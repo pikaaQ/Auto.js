@@ -281,7 +281,8 @@ document.getElementById("overlay-canvas").addEventListener("click", (e) => {
   const scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
   const mx = (e.clientX - rect.left) * scaleX, my = (e.clientY - rect.top) * scaleY;
   let clicked = null;
-  for (const c of componentList) {
+  for (var i = componentList.length - 1; i >= 0; i--) {
+    const c = componentList[i];
     const b = c.bounds;
     if (mx >= b.left && mx <= b.right && my >= b.top && my <= b.bottom) { clicked = c; break; }
   }
