@@ -577,12 +577,12 @@ async function savePicRect() {
     picRects.push(rect);
     selectedPicIdx = picRects.length - 1;
   }
-  await api("POST", "/api/explore/pic", { action: "save", page_id: currentPageId, rects: picRects });
-  renderOverlay();
-  renderPicList();
-  document.getElementById("pic-info").textContent = "已保存";
-}
-  catch (e) { alert(e.message); }
+  try {
+    await api("POST", "/api/explore/pic", { action: "save", page_id: currentPageId, rects: picRects });
+    renderOverlay();
+    renderPicList();
+    document.getElementById("pic-info").textContent = "已保存";
+  } catch (e) { alert(e.message); }
 }
 
 async function savePageInfo() {
