@@ -308,6 +308,15 @@ ctx.strokeStyle = "#f44336"; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
       }
     });
   }
+  // 高亮选中组件
+  if (selectedComponent) {
+    var b = selectedComponent.bounds;
+    var x = b.left, y = b.top, w = b.right - b.left, h = b.bottom - b.top;
+    if (w > 0 && h > 0) {
+      ctx.strokeStyle = "#00e676"; ctx.lineWidth = 4; ctx.strokeRect(x, y, w, h);
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
+    }
+  }
 }
 
 document.getElementById("overlay-canvas").addEventListener("click", (e) => {
@@ -325,6 +334,7 @@ document.getElementById("overlay-canvas").addEventListener("click", (e) => {
   if (!clicked) return;
   selectedComponent = clicked;
   updateTransitionForm(clicked);
+  renderOverlay();
 });
 
 function updateTransitionForm(component) {
@@ -351,6 +361,8 @@ function clearTransitionForm() {
   document.getElementById("tf-confirm").disabled = true;
   document.getElementById("tf-target").disabled = true;
   document.getElementById("tf-method").disabled = true;
+  var img = document.getElementById("screenshot-img");
+  if (img && img.style.width) renderOverlay();
 }
 
 async function confirmTransition() {
