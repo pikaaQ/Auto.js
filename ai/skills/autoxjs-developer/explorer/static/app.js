@@ -523,9 +523,10 @@ async function explorePage() {
 }
 
 async function addPage() {
-  const id = prompt("输入页面ID（英文，如 home）："); if (!id) return;
+const id = prompt("输入页面ID（英文，如 home）："); if (!id) return;
   const name = prompt("输入页面名称（中文，如 主页）：");
-  try { await api("POST", "/api/flow/page", { id, name: name || id }); await loadFlow(); renderPageList();
+  try { await api("POST", "/api/flow/page", { id, name: name || id }); await loadFlow(); renderPageList(); }
+  catch (e) { alert(e.message); }
 }
 
 // ─── 找图功能 ───────────────────────────────────────
