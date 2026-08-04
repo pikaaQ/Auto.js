@@ -2,6 +2,7 @@
 let currentPageId = null;
 let ocrData = [], dumpData = null, selectedComponent = null, componentList = [];
 let flow = { pages: [] }, projectPath = null;
+let picRects = [], drawing = false, drawStart = null, selectedPicIdx = -1;
 const STORAGE_KEY = "explorer_project_paths";
 
 // ─── 初始化 ─────────────────────────────────────────
@@ -228,6 +229,7 @@ async function loadResult(pageId) {
   };
   ocrData = data.ocr || [];
   dumpData = data.dump ? parseDumpData(data.dump) : null;
+  if (data.pics) { picRects = data.pics; renderPicList(); }
   renderTransitions(data.transitions || []);
 }
 
@@ -332,6 +334,27 @@ ctx.strokeStyle = "#f44336"; ctx.lineWidth = 4; ctx.strokeRect(x, y, w, h);
       }
     });
   }
+  // 绘制已保存的找图区域
+  for (var pi = 0; pi < picRects.length; pi++) {
+    var pr = picRects[pi];
+    var x = pr.left, y = pr.top, w = pr.right - pr.left, h = pr.bottom - pr.top;
+    if (w <= 0 || h <= 0) continue;
+    var isSel = (pi === selectedPicIdx);
+    ctx.strokeStyle = isSel ? "#00e676" : "#ff9800";
+    ctx.lineWidth = isSel ? 6 : 3;
+    ctx.setLineDash(isSel ? [] : [4, 2]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+    if (pr.label) {
+      var fs = Math.max(10, Math.min(h / 2, 24));
+      ctx.fillStyle = isSel ? "rgba(0, 230, 118, 0.8)" : "rgba(255, 152, 0, 0.7)";
+      ctx.font = "bold " + fs + "px sans-serif";
+      var tw = ctx.measureText(pr.label).width;
+      ctx.fillRect(x, y - fs - 4, Math.min(tw + 4, w), fs + 4);
+      ctx.fillStyle = "#fff";
+      ctx.fillText(pr.label, x + 2, y - 3);
+    }
+  }
   // 高亮选中组件
   if (selectedComponent) {
     var b = selectedComponent.bounds;
@@ -343,16 +366,59 @@ ctx.strokeStyle = "#f44336"; ctx.lineWidth = 4; ctx.strokeRect(x, y, w, h);
   }
 }
 
-document.getElementById("overlay-canvas").addEventListener("click", (e) => {
+// ─── Canvas 交互 ────────────────────────────────────
+var canvas = document.getElementById("overlay-canvas");
+
+canvas.addEventListener("mousedown", function(e) {
+  if (!document.getElementById("toggle-pic").checked) return;
+  var rect = canvas.getBoundingClientRect();
+  var scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+  drawing = true;
+  drawStart = { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+});
+
+canvas.addEventListener("mousemove", function(e) {
+  if (!drawing) return;
+  var rect = canvas.getBoundingClientRect();
+  var scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+  var mx = (e.clientX - rect.left) * scaleX, my = (e.clientY - rect.top) * scaleY;
+  // 重新绘制所有内容 + 绘制中的矩形
+  renderOverlay();
+  var ctx = canvas.getContext("2d");
+  var x = Math.min(drawStart.x, mx), y = Math.min(drawStart.y, my);
+  var w = Math.abs(mx - drawStart.x), h = Math.abs(my - drawStart.y);
+  ctx.strokeStyle = "#ff9800"; ctx.lineWidth = 3; ctx.setLineDash([6, 3]);
+  ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
+  ctx.fillStyle = "rgba(255, 152, 0, 0.15)"; ctx.fillRect(x, y, w, h);
+});
+
+canvas.addEventListener("mouseup", function(e) {
+  if (!drawing) return;
+  drawing = false;
+  var rect = canvas.getBoundingClientRect();
+  var scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+  var mx = (e.clientX - rect.left) * scaleX, my = (e.clientY - rect.top) * scaleY;
+  var x = Math.min(drawStart.x, mx), y = Math.min(drawStart.y, my);
+  var w = Math.abs(mx - drawStart.x), h = Math.abs(my - drawStart.y);
+  if (w < 10 || h < 10) { renderOverlay(); return; }
+  selectedPicIdx = -1;
+  document.getElementById("pic-form").style.display = "block";
+  document.getElementById("pic-coords").value = "[" + Math.round(x) + "," + Math.round(y) + " - " + Math.round(x+w) + "," + Math.round(y+h) + "]";
+  document.getElementById("pic-label").value = "";
+  document.getElementById("pic-info").textContent = "新区域";
+  renderOverlay();
+});
+
+canvas.addEventListener("click", function(e) {
+  if (document.getElementById("toggle-pic").checked) return;
   if (componentList.length === 0) return;
-  const canvas = e.target;
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
-  const mx = (e.clientX - rect.left) * scaleX, my = (e.clientY - rect.top) * scaleY;
-  let clicked = null;
+  var rect = canvas.getBoundingClientRect();
+  var scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+  var mx = (e.clientX - rect.left) * scaleX, my = (e.clientY - rect.top) * scaleY;
+  var clicked = null;
   for (var i = componentList.length - 1; i >= 0; i--) {
-    const c = componentList[i];
-    const b = c.bounds;
+    var c = componentList[i];
+    var b = c.bounds;
     if (mx >= b.left && mx <= b.right && my >= b.top && my <= b.bottom) { clicked = c; break; }
   }
   if (!clicked) return;
@@ -459,7 +525,62 @@ async function explorePage() {
 async function addPage() {
   const id = prompt("输入页面ID（英文，如 home）："); if (!id) return;
   const name = prompt("输入页面名称（中文，如 主页）：");
-  try { await api("POST", "/api/flow/page", { id, name: name || id }); await loadFlow(); renderPageList(); }
+  try { await api("POST", "/api/flow/page", { id, name: name || id }); await loadFlow(); renderPageList();
+}
+
+// ─── 找图功能 ───────────────────────────────────────
+async function loadPicRects(pageId) {
+  if (!projectPath) { picRects = []; return; }
+  try {
+    var data = await api("POST", "/api/explore/pic", { action: "get", page_id: pageId });
+    picRects = Array.isArray(data) ? data : [];
+  } catch { picRects = []; }
+  renderPicList();
+}
+
+function renderPicList() {
+  var list = document.getElementById("pic-items");
+  list.innerHTML = "";
+  if (picRects.length === 0) { document.getElementById("pic-list").style.display = "none"; return; }
+  document.getElementById("pic-list").style.display = "block";
+  picRects.forEach(function(r, i) {
+    var d = document.createElement("div");
+    d.className = "transition-item" + (i === selectedPicIdx ? " active" : "");
+    d.innerHTML = '<span style="font-size:12px;color:#ff9800;">🖼</span> <span style="flex:1;font-size:13px;margin:0 4px;">' + (r.label || "未命名") + '</span><span style="font-size:11px;color:#999;">' + r.left + "," + r.top + "</span>";
+    d.onclick = function() {
+      selectedPicIdx = i;
+      document.getElementById("pic-form").style.display = "block";
+      document.getElementById("pic-coords").value = "[" + r.left + "," + r.top + " - " + r.right + "," + r.bottom + "]";
+      document.getElementById("pic-label").value = r.label || "";
+      document.getElementById("pic-info").textContent = "编辑区域";
+      renderOverlay();
+      renderPicList();
+      // 也作为选中组件，用于跳转
+      selectedComponent = { label: r.label || "pic_" + i, bounds: { left: r.left, top: r.top, right: r.right, bottom: r.bottom }, type: "pic" };
+      updateTransitionForm(selectedComponent);
+    };
+    list.appendChild(d);
+  });
+}
+
+async function savePicRect() {
+  if (!currentPageId || !projectPath) return;
+  var coords = document.getElementById("pic-coords").value;
+  var label = document.getElementById("pic-label").value.trim() || "区域" + (picRects.length + 1);
+  var m = coords.match(/(\d+)/g);
+  if (!m || m.length < 4) { alert("坐标无效"); return; }
+  var rect = { left: parseInt(m[0]), top: parseInt(m[1]), right: parseInt(m[2]), bottom: parseInt(m[3]), label: label };
+  if (selectedPicIdx >= 0 && selectedPicIdx < picRects.length) {
+    picRects[selectedPicIdx] = rect;
+  } else {
+    picRects.push(rect);
+    selectedPicIdx = picRects.length - 1;
+  }
+  await api("POST", "/api/explore/pic", { action: "save", page_id: currentPageId, rects: picRects });
+  renderOverlay();
+  renderPicList();
+  document.getElementById("pic-info").textContent = "已保存";
+}
   catch (e) { alert(e.message); }
 }
 

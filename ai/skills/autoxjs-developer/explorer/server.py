@@ -288,6 +288,8 @@ log("=== 探索完毕: " + pageId + " ===");
             result["ocr"] = json.load(open(ocr_p, encoding="utf-8")) if os.path.exists(ocr_p) else []
             dump_p = os.path.join(page_dir, "dump.json")
             result["dump"] = json.dumps(json.load(open(dump_p, encoding="utf-8")), ensure_ascii=False) if os.path.exists(dump_p) else ""
+            pic_p = os.path.join(page_dir, "pic.json")
+            result["pics"] = json.load(open(pic_p, encoding="utf-8")) if os.path.exists(pic_p) else []
             flow = self._load_flow(project)
             page = self._find_page(flow, page_id)
             result["transitions"] = page.get("transitions", []) if page else []
@@ -438,6 +440,30 @@ log("=== 探索完毕: " + pageId + " ===");
                 page["name"] = new_name
             self._save_flow(flow, project)
             self._send_json({"status": "ok"})
+
+        elif path == "/api/explore/pic":
+            project = self._get_project(data)
+            if not project:
+                self._send_error("缺少 project_path")
+                return
+            page_id = data.get("page_id", "")
+            if not page_id:
+                self._send_error("缺少 page_id")
+                return
+            pic_path = os.path.join(self._explore_dir(project, page_id), "pic.json")
+            if data.get("action") == "save":
+                rects = data.get("rects", [])
+                with open(pic_path, "w", encoding="utf-8") as f:
+                    json.dump(rects, f, ensure_ascii=False, indent=2)
+                self._send_json({"status": "ok", "count": len(rects)})
+            elif data.get("action") == "get":
+                if os.path.exists(pic_path):
+                    with open(pic_path, encoding="utf-8") as f:
+                        self._send_json(json.load(f))
+                else:
+                    self._send_json([])
+            else:
+                self._send_error("未知 action")
 
         else:
             self._send_error("未知路由", 404)
