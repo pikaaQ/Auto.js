@@ -42,37 +42,37 @@
     </aside>
 
     <main class="content">
-      <div id="page-detail" class="page-detail">
-        <div class="detail-header">
-          <h2 id="detail-title">选择项目后开始探索</h2>
-          <div class="detail-actions">
-            <button id="btn-explore" onclick="explorePage()" disabled>🚀 探索</button>
-            <button id="btn-refresh" onclick="refreshResult()" disabled>🔄 刷新</button>
+      <div class="content-body">
+        <div class="canvas-area">
+          <div class="canvas-container" id="canvas-container">
+            <div class="placeholder" id="placeholder">
+              <p>选择项目 → 添加页面 → 点击「探索」</p>
+              <p>探索完成后截图将在此显示</p>
+            </div>
+            <div id="image-wrapper" style="display:none; position:relative;">
+              <img id="screenshot-img" crossorigin="anonymous">
+              <canvas id="overlay-canvas"></canvas>
+            </div>
           </div>
         </div>
-        <div class="content-body">
-          <div class="canvas-area">
-            <div class="canvas-container" id="canvas-container">
-              <div class="placeholder" id="placeholder">
-                <p>选择项目 → 添加页面 → 点击「探索」</p>
-                <p>探索完成后截图将在此显示</p>
-              </div>
-              <div id="image-wrapper" style="display:none; position:relative;">
-                <img id="screenshot-img" crossorigin="anonymous">
-                <canvas id="overlay-canvas"></canvas>
-              </div>
+        <div class="side-panel">
+          <div class="detail-header">
+            <h2 id="detail-title">选择项目后开始探索</h2>
+            <div class="detail-actions">
+              <button id="btn-explore" onclick="explorePage()" disabled>🚀 探索</button>
+              <button id="btn-refresh" onclick="refreshResult()" disabled>🔄 刷新</button>
             </div>
-            <div class="toolbar" id="toolbar" style="display:none;">
-              <label class="toggle">
-                <input type="checkbox" id="toggle-ocr" onchange="toggleOverlay()">
-                <span class="toggle-label">📝 OCR</span>
-              </label>
-              <label class="toggle">
-                <input type="checkbox" id="toggle-dump" onchange="toggleOverlay()">
-                <span class="toggle-label">📋 DUMP</span>
-              </label>
-              <span class="toolbar-hint">点击组件标注跳转</span>
-            </div>
+          </div>
+          <div class="toolbar" id="toolbar" style="display:none;">
+            <label class="toggle">
+              <input type="checkbox" id="toggle-ocr" onchange="toggleOverlay()">
+              <span class="toggle-label">📝 OCR</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="toggle-dump" onchange="toggleOverlay()">
+              <span class="toggle-label">📋 DUMP</span>
+            </label>
+            <span class="toolbar-hint">点击组件标注跳转</span>
           </div>
           <div class="transitions-panel" id="transitions-panel" style="display:none;">
             <h3>页面跳转</h3>
