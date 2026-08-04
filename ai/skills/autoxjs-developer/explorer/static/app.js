@@ -342,8 +342,13 @@ async function confirmTransition() {
     bounds: [selectedComponent.bounds.left, selectedComponent.bounds.top, selectedComponent.bounds.right, selectedComponent.bounds.bottom],
   });
   clearTransitionForm();
-  await loadResult(currentPageId);
-  renderPageList();
+  await loadFlow();
+  // 仅刷新跳转列表
+  if (currentPageId) {
+    var page = flow.pages.find(function(p) { return p.id === currentPageId; });
+    renderTransitions(page ? page.transitions || [] : []);
+    renderPageList();
+  }
 }
 
 function renderTransitions(transitions) {
@@ -358,31 +363,34 @@ function renderTransitions(transitions) {
 }
 
 async function deleteTransition(index) {
-  const page = flow.pages.find(p => p.id === currentPageId); if (!page) return;
+  const page = flow.pages.find(function(p) { return p.id === currentPageId; }); if (!page) return;
   page.transitions.splice(index, 1);
-  await api("PUT", "/api/flow", flow); await loadResult(currentPageId); renderPageList();
+  await api("PUT", "/api/flow", flow);
+  await loadFlow();
+  // 仅刷新跳转列表
+  if (currentPageId) {
+    var p = flow.pages.find(function(x) { return x.id === currentPageId; });
+    renderTransitions(p ? p.transitions || [] : []);
+    renderPageList();
+  }
 }
 
 async function explorePage() {
   if (!currentPageId || !projectPath) return;
   document.getElementById("btn-explore").disabled = true;
   document.getElementById("btn-explore").textContent = "⏳ 探索中...";
-  try { await api("POST", "/api/explore", { page_id: currentPageId }); }
-  catch (e) { alert("探索失败: " + e.message); document.getElementById("btn-explore").disabled = false; document.getElementById("btn-explore").textContent = "🚀 探索"; return; }
-  let att = 0;
-  const poll = setInterval(async () => {
-    att++;
-    try {
-      const s = await api("POST", "/api/explore/poll", { page_id: currentPageId });
-      if (s.status === "ok" || s.status === "error" || s.status === "shizuku_failed" || att > 30) {
-        clearInterval(poll);
-        document.getElementById("btn-explore").disabled = false;
-        document.getElementById("btn-explore").textContent = "🚀 探索";
-        if (s.status === "shizuku_failed") alert("Shizuku 未运行，请检查手机");
-        await loadResult(currentPageId); renderPageList();
-      }
-    } catch { clearInterval(poll); document.getElementById("btn-explore").disabled = false; document.getElementById("btn-explore").textContent = "🚀 探索"; }
-  }, 2000);
+  try {
+    await api("POST", "/api/explore", { page_id: currentPageId });
+  } catch (e) {
+    alert("探索失败: " + e.message);
+    document.getElementById("btn-explore").disabled = false;
+    document.getElementById("btn-explore").textContent = "🚀 探索";
+    return;
+  }
+  document.getElementById("btn-explore").disabled = false;
+  document.getElementById("btn-explore").textContent = "🚀 探索";
+  await loadResult(currentPageId);
+  renderPageList();
 }
 
 async function addPage() {

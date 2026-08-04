@@ -349,7 +349,6 @@ log("=== 探索完毕: " + pageId + " ===");
             if not page_id or not project:
                 self._send_error("缺少 page_id 或 project_path")
                 return
-            # 确保本地目录存在
             os.makedirs(self._explore_dir(project), exist_ok=True)
             os.makedirs(self._explore_dir(project, page_id), exist_ok=True)
             script = self._generate_explore_script(page_id)
@@ -357,8 +356,11 @@ log("=== 探索完毕: " + pageId + " ===");
             if resp.get("error"):
                 self._send_error(resp["error"])
                 return
-            self._send_json({"status": "running", "page_id": page_id})
-            threading.Thread(target=self._pull_explore_results, args=(page_id, project), daemon=True).start()
+            # 同步等待探索完成并拉取结果
+            import time
+            time.sleep(5)
+            self._pull_explore_results(page_id, project)
+            self._send_json({"status": "ok", "page_id": page_id})
 
         elif path == "/api/explore/poll":
             page_id = data.get("page_id", "")
