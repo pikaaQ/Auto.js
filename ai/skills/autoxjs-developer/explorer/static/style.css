@@ -62,11 +62,22 @@ header button:hover { background: #0f3460; }
 .placeholder p { margin: 8px 0; }
 
 /* Side panel */
-.side-panel { width: 280px; display: flex; flex-direction: column; flex-shrink: 0; padding-left: 12px; border-left: 1px solid #ddd; }
-.toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 0; flex-shrink: 0; flex-wrap: wrap; }
-.toolbar-hint { font-size: 12px; color: #999; }
-.transitions-panel { flex: 1; overflow-y: auto; }
-.transitions-panel h3 { font-size: 13px; color: #666; margin-bottom: 8px; }
+.side-panel { width: 400px; display: flex; flex-direction: column; flex-shrink: 0; padding-left: 12px; border-left: 1px solid #ddd; }
+.toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 0; flex-shrink: 0; }
+.toggle { display: flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
+.toggle input[type="radio"] { width: 16px; height: 16px; }
+.toggle-label { font-size: 13px; }
+.transitions-panel { flex: 1; overflow-y: auto; padding-top: 12px; }
+.transitions-panel h3 { font-size: 14px; font-weight: 600; color: #333; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+.transition-form { margin-top: 12px; padding: 12px; background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 6px; }
+.transition-form h4 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.tf-info { font-size: 12px; color: #999; margin-bottom: 10px; }
+.tf-field { margin-bottom: 8px; }
+.tf-field label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+.tf-field select { width: 100%; padding: 5px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+.tf-field select:disabled { background: #eee; color: #999; }
+#tf-confirm { width: 100%; padding: 6px; background: #1976d2; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; margin-top: 4px; }
+#tf-confirm:disabled { background: #ccc; cursor: not-allowed; }
 .transition-item { display: flex; align-items: center; padding: 6px 10px; background: #fff; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 4px; font-size: 13px; }
 .transition-item .method-tag { font-size: 11px; padding: 1px 6px; border-radius: 3px; margin-right: 8px; }
 .method-tag.ocr { background: #e3f2fd; color: #1565c0; }

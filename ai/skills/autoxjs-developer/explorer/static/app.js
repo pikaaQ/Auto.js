@@ -228,7 +228,11 @@ function setupCanvas() {
   canvas.style.width = "100%"; canvas.style.height = "100%";
 }
 
-function toggleOverlay() { renderOverlay(); }
+function toggleOverlay() {
+  renderOverlay();
+  // 选中组件时更新表单
+  if (selectedComponent) updateTransitionForm(selectedComponent);
+}
 
 function renderOverlay() {
   const canvas = document.getElementById("overlay-canvas");
@@ -293,33 +297,53 @@ document.getElementById("overlay-canvas").addEventListener("click", (e) => {
   }
   if (!clicked) return;
   selectedComponent = clicked;
-  showTransitionModal(clicked);
+  updateTransitionForm(clicked);
 });
 
-function showTransitionModal(component) {
-  document.getElementById("modal-label").textContent = component.label;
-  document.getElementById("modal-bounds").textContent = `[${component.bounds.left},${component.bounds.top} - ${component.bounds.right},${component.bounds.bottom}]`;
-  const select = document.getElementById("modal-target");
+function updateTransitionForm(component) {
+  document.getElementById("tf-title").textContent = "📌 " + (component.label || "未命名组件");
+  document.getElementById("tf-info").textContent = "位置: [" + component.bounds.left + "," + component.bounds.top + " - " + component.bounds.right + "," + component.bounds.bottom + "]";
+  document.getElementById("tf-confirm").disabled = false;
+  var select = document.getElementById("tf-target");
+  select.disabled = false;
   select.innerHTML = "";
-  flow.pages.forEach(p => { if (p.id !== currentPageId) { const o = document.createElement("option"); o.value = p.id; o.textContent = p.name; select.appendChild(o); } });
-  const c = document.createElement("option"); c.value = "__custom__"; c.textContent = "手动输入..."; select.appendChild(c);
-  document.getElementById("modal-method").value = component.type;
-  document.getElementById("modal-overlay").style.display = "flex";
+  flow.pages.forEach(function(p) {
+    if (p.id !== currentPageId) {
+      var o = document.createElement("option"); o.value = p.id; o.textContent = p.name; select.appendChild(o);
+    }
+  });
+  var c = document.createElement("option"); c.value = "__custom__"; c.textContent = "手动输入..."; select.appendChild(c);
+  document.getElementById("tf-method").disabled = false;
+  document.getElementById("tf-method").value = component.type;
 }
 
-function closeModal(e) { if (e && e.target !== e.currentTarget) return; document.getElementById("modal-overlay").style.display = "none"; selectedComponent = null; }
+function clearTransitionForm() {
+  selectedComponent = null;
+  document.getElementById("tf-title").textContent = "选择组件";
+  document.getElementById("tf-info").textContent = "点击截图中的组件来标注跳转";
+  document.getElementById("tf-confirm").disabled = true;
+  document.getElementById("tf-target").disabled = true;
+  document.getElementById("tf-method").disabled = true;
+}
 
 async function confirmTransition() {
-  const target = document.getElementById("modal-target").value;
-  let targetId = target;
-  if (target === "__custom__") { targetId = prompt("输入目标页面ID:"); if (!targetId) return; await api("POST", "/api/flow/page", { id: targetId, name: targetId }); await loadFlow(); }
+  if (!selectedComponent) return;
+  var target = document.getElementById("tf-target").value;
+  var targetId = target;
+  if (target === "__custom__") {
+    targetId = prompt("输入目标页面ID:"); if (!targetId) return;
+    await api("POST", "/api/flow/page", { id: targetId, name: targetId });
+    await loadFlow();
+  }
   await api("POST", "/api/flow/transition", {
     page_id: currentPageId, target_id: targetId,
-    method: document.getElementById("modal-method").value,
+    method: document.getElementById("tf-method").value,
     label: selectedComponent.label,
     bounds: [selectedComponent.bounds.left, selectedComponent.bounds.top, selectedComponent.bounds.right, selectedComponent.bounds.bottom],
   });
-  closeModal(); await loadResult(currentPageId); renderPageList();
+  clearTransitionForm();
+  await loadResult(currentPageId);
+  renderPageList();
 }
 
 function renderTransitions(transitions) {
