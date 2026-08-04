@@ -253,8 +253,13 @@ function renderOverlay() {
     });
   }
   if (showDump && dumpData) {
-    // 按 depth 从小到大排序，depth 大的在上层（点击优先级高）
-    var sorted = dumpData.slice().sort(function(a, b) { return a.depth - b.depth; });
+    // 按 depth 从小到大排序，同 depth 时面积大的在前（被包含的小面积在后，优先被点击）
+    var sorted = dumpData.slice().sort(function(a, b) {
+      if (a.depth !== b.depth) return a.depth - b.depth;
+      var areaA = (a._right - a._left) * (a._bottom - a._top);
+      var areaB = (b._right - b._left) * (b._bottom - b._top);
+      return areaB - areaA; // 面积大的在前
+    });
     sorted.forEach(function(node) {
       var x = node._left, y = node._top, w = node._right - node._left, h = node._bottom - node._top;
       if (w <= 0 || h <= 0) return;
