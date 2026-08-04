@@ -414,6 +414,31 @@ log("=== 探索完毕: " + pageId + " ===");
             self._save_flow(flow, project)
             self._send_json({"status": "ok"})
 
+        elif path == "/api/flow/page/update":
+            project = self._get_project(data)
+            if not project:
+                self._send_error("缺少 project_path")
+                return
+            page_id = data.get("id", "")
+            new_id = data.get("new_id", page_id)
+            new_name = data.get("name", "")
+            if not page_id:
+                self._send_error("缺少 id")
+                return
+            flow = self._load_flow(project)
+            page = self._find_page(flow, page_id)
+            if not page:
+                self._send_error(f"页面 {page_id} 不存在")
+                return
+            if new_id != page_id and self._find_page(flow, new_id):
+                self._send_error(f"页面ID {new_id} 已存在")
+                return
+            page["id"] = new_id
+            if new_name:
+                page["name"] = new_name
+            self._save_flow(flow, project)
+            self._send_json({"status": "ok"})
+
         else:
             self._send_error("未知路由", 404)
 

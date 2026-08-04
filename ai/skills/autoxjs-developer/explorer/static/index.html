@@ -63,24 +63,38 @@
               <button id="btn-refresh" onclick="refreshResult()" disabled>🔄 刷新</button>
             </div>
           </div>
+          <div class="page-info" id="page-info" style="display:none;">
+            <div class="info-field">
+              <label>页面ID</label>
+              <input type="text" id="edit-page-id" disabled>
+            </div>
+            <div class="info-field">
+              <label>页面名称</label>
+              <div style="display:flex;gap:4px;">
+                <input type="text" id="edit-page-name">
+                <button id="btn-save-page" onclick="savePageInfo()" style="padding:4px 8px;font-size:12px;">保存</button>
+              </div>
+            </div>
+          </div>
           <div class="toolbar" id="toolbar" style="display:none;">
-            <label class="toggle">
-              <input type="radio" name="overlay" id="toggle-ocr" onchange="toggleOverlay()">
-              <span class="toggle-label">📝 OCR</span>
-            </label>
             <label class="toggle">
               <input type="radio" name="overlay" id="toggle-dump" onchange="toggleOverlay()">
               <span class="toggle-label">📋 DUMP</span>
             </label>
             <label class="toggle">
-              <input type="radio" name="overlay" id="toggle-none" onchange="toggleOverlay()" checked>
+              <input type="radio" name="overlay" id="toggle-ocr" onchange="toggleOverlay()">
+              <span class="toggle-label">📝 OCR</span>
+            </label>
+            <label class="toggle">
+              <input type="radio" name="overlay" id="toggle-none" onchange="toggleOverlay()">
               <span class="toggle-label">❌ 关闭</span>
             </label>
           </div>
-          <div class="transitions-panel" id="transitions-panel" style="display:none;">
+          <div class="transitions-panel" id="transitions-panel">
             <h3>页面跳转</h3>
-            <div id="transitions-list"></div>
-            <div class="transition-form" id="transition-form">
+            <div id="transitions-status" class="tf-info" style="padding:8px 0;text-align:center;">选择页面后查看跳转</div>
+            <div id="transitions-list" style="display:none;"></div>
+            <div class="transition-form" id="transition-form" style="display:none;">
               <h4 id="tf-title">选择组件</h4>
               <div id="tf-info" class="tf-info">点击截图中的组件来标注跳转</div>
               <div class="tf-field">

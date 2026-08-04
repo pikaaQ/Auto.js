@@ -69,6 +69,11 @@ header button:hover { background: #0f3460; }
 .toggle-label { font-size: 13px; }
 .transitions-panel { flex: 1; overflow-y: auto; padding-top: 12px; }
 .transitions-panel h3 { font-size: 14px; font-weight: 600; color: #333; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+.page-info { padding: 8px 0; flex-shrink: 0; }
+.info-field { margin-bottom: 6px; }
+.info-field label { display: block; font-size: 11px; color: #888; margin-bottom: 2px; }
+.info-field input[type="text"] { width: 100%; padding: 4px 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
+.info-field input[type="text"]:disabled { background: #f5f5f5; color: #999; }
 .transition-form { margin-top: 12px; padding: 12px; background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 6px; }
 .transition-form h4 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
 .tf-info { font-size: 12px; color: #999; margin-bottom: 10px; }

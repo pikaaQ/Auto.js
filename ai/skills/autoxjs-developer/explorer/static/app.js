@@ -167,7 +167,21 @@ async function selectPage(pageId) {
   document.querySelectorAll(".page-item").forEach(el => {
     if (el.querySelector(".page-name").textContent === (flow.pages.find(p => p.id === pageId)?.name || pageId)) el.classList.add("active");
   });
-  document.getElementById("detail-title").textContent = `📄 ${flow.pages.find(p => p.id === pageId)?.name || pageId}`;
+  document.getElementById("detail-title").textContent = "📄 " + (flow.pages.find(p => p.id === pageId)?.name || pageId);
+  // 显示页面信息编辑
+  document.getElementById("page-info").style.display = "block";
+  document.getElementById("edit-page-id").value = pageId;
+  document.getElementById("edit-page-name").value = flow.pages.find(p => p.id === pageId)?.name || pageId;
+  // 显示加载中
+  document.getElementById("placeholder").style.display = "block";
+  document.getElementById("placeholder").innerHTML = "<p>⏳ 正在加载...</p>";
+  document.getElementById("image-wrapper").style.display = "none";
+  document.getElementById("toolbar").style.display = "none";
+  document.getElementById("toggle-none").checked = true;
+  document.getElementById("transitions-status").style.display = "block";
+  document.getElementById("transitions-status").textContent = "⏳ 正在加载...";
+  document.getElementById("transitions-list").style.display = "none";
+  document.getElementById("transition-form").style.display = "none";
   await loadResult(pageId);
 }
 
@@ -177,20 +191,25 @@ async function loadResult(pageId) {
   let data;
   try { data = await fetch(`/api/explore/${pageId}/result` + qs({ project_path: projectPath })).then(r => r.json()); }
   catch {
-    ["placeholder", "image-wrapper", "toolbar", "transitions-panel"].forEach(id => {
-      const el = document.getElementById(id);
-      if (["image-wrapper", "toolbar", "transitions-panel"].includes(id)) { el.style.display = "none"; }
-      else { el.style.display = "block"; el.innerHTML = "<p>该页面尚未探索</p>"; }
-    });
+    document.getElementById("placeholder").style.display = "block";
+    document.getElementById("placeholder").innerHTML = "<p>该页面尚未探索</p>";
+    document.getElementById("image-wrapper").style.display = "none";
+    document.getElementById("toolbar").style.display = "none";
+    document.getElementById("transitions-status").style.display = "block";
+    document.getElementById("transitions-status").textContent = "该页面尚未探索";
+    document.getElementById("transitions-list").style.display = "none";
+    document.getElementById("transition-form").style.display = "none";
     return;
   }
-  document.getElementById("placeholder").style.display = "none";
-  document.getElementById("image-wrapper").style.display = "none";
-  document.getElementById("toolbar").style.display = "none";
-  document.getElementById("transitions-panel").style.display = "none";
   if (!data.files || !data.files["screenshot.png"]) {
     document.getElementById("placeholder").style.display = "block";
     document.getElementById("placeholder").innerHTML = "<p>该页面尚未探索</p>";
+    document.getElementById("image-wrapper").style.display = "none";
+    document.getElementById("toolbar").style.display = "none";
+    document.getElementById("transitions-status").style.display = "block";
+    document.getElementById("transitions-status").textContent = "该页面尚未探索";
+    document.getElementById("transitions-list").style.display = "none";
+    document.getElementById("transition-form").style.display = "none";
     return;
   }
   const img = document.getElementById("screenshot-img");
@@ -198,8 +217,15 @@ async function loadResult(pageId) {
   img.onload = function() {
     document.getElementById("image-wrapper").style.display = "inline-block";
     document.getElementById("toolbar").style.display = "flex";
-    document.getElementById("transitions-panel").style.display = "block";
+    document.getElementById("transitions-status").style.display = "none";
+    document.getElementById("transitions-list").style.display = "block";
+    document.getElementById("transition-form").style.display = "block";
+    // 默认选中 DUMP（有结果时），否则 OCR
+    if (data.dump) { document.getElementById("toggle-dump").checked = true; }
+    else { document.getElementById("toggle-ocr").checked = true; }
+    toggleOverlay();
     fitImage();
+  };
   };
   ocrData = data.ocr || [];
   dumpData = data.dump ? parseDumpData(data.dump) : null;
@@ -436,4 +462,17 @@ async function addPage() {
   const name = prompt("输入页面名称（中文，如 主页）：");
   try { await api("POST", "/api/flow/page", { id, name: name || id }); await loadFlow(); renderPageList(); }
   catch (e) { alert(e.message); }
+}
+
+async function savePageInfo() {
+  if (!currentPageId || !projectPath) return;
+  var newId = document.getElementById("edit-page-id").value.trim();
+  var newName = document.getElementById("edit-page-name").value.trim();
+  if (!newId) { alert("页面ID不能为空"); return; }
+  await api("POST", "/api/flow/page/update", { id: currentPageId, new_id: newId, name: newName });
+  await loadFlow();
+  currentPageId = newId;
+  document.getElementById("edit-page-id").value = newId;
+  document.getElementById("detail-title").textContent = "📄 " + newName;
+  renderPageList();
 }
