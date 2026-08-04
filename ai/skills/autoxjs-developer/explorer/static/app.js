@@ -226,7 +226,6 @@ async function loadResult(pageId) {
     toggleOverlay();
     fitImage();
   };
-  };
   ocrData = data.ocr || [];
   dumpData = data.dump ? parseDumpData(data.dump) : null;
   renderTransitions(data.transitions || []);
