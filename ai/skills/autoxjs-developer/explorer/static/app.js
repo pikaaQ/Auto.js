@@ -195,16 +195,43 @@ async function loadResult(pageId) {
   }
   const img = document.getElementById("screenshot-img");
   img.src = `/api/explore/${pageId}/screenshot.png` + qs({ project_path: projectPath }) + "&t=" + Date.now();
-  img.onload = () => {
+  img.onload = function() {
     document.getElementById("image-wrapper").style.display = "inline-block";
     document.getElementById("toolbar").style.display = "flex";
     document.getElementById("transitions-panel").style.display = "block";
-    setupCanvas(); renderOverlay();
+    fitImage();
   };
   ocrData = data.ocr || [];
   dumpData = data.dump ? parseDumpData(data.dump) : null;
   renderTransitions(data.transitions || []);
 }
+
+function fitImage() {
+  var container = document.getElementById("canvas-container");
+  var img = document.getElementById("screenshot-img");
+  var canvas = document.getElementById("overlay-canvas");
+  var cw = container.clientWidth;
+  var ch = container.clientHeight;
+  var iw = img.naturalWidth;
+  var ih = img.naturalHeight;
+  if (cw <= 0 || ch <= 0 || iw <= 0 || ih <= 0) return;
+  // 计算缩放比例，填满容器
+  var scale = Math.min(cw / iw, ch / ih);
+  var dw = Math.round(iw * scale);
+  var dh = Math.round(ih * scale);
+  img.style.width = dw + "px";
+  img.style.height = dh + "px";
+  canvas.width = iw;
+  canvas.height = ih;
+  canvas.style.width = dw + "px";
+  canvas.style.height = dh + "px";
+  renderOverlay();
+}
+
+window.addEventListener("resize", function() {
+  var img = document.getElementById("screenshot-img");
+  if (img && img.style.width) fitImage();
+});
 
 function parseDumpData(data) {
   // JSON 格式：扁平节点数组 [{bounds, text, className, clickable, depth}]
