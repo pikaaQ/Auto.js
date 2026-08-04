@@ -223,10 +223,10 @@ class AutoJSServer:
         elif msg_type == "command_result":
             cid = data.get("command_id", "")
             result = data.get("result", "")
-            if isinstance(result, str) and len(result) > 500:
-                print(f"{_ts()} ← 指令结果: {cid} (dump 内容, {len(result)} chars, 已省略)")
-            else:
-                print(f"{_ts()} ← 指令结果: {cid} -> {data}")
+            result_size = len(str(result))
+            summary = {k: v for k, v in data.items() if k != "result"}
+            summary["result"] = f"<{result_size} chars>" if result_size > 200 else result
+            print(f"{_ts()} ← 指令结果: {cid} -> {summary}")
             sys.stdout.flush()
             device.deliver_result(cid, data)
 

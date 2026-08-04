@@ -134,9 +134,9 @@ class ExploreHandler(SimpleHTTPRequestHandler):
         # 只保留可见节点
         if node.get("visible") and node.get("bounds"):
             bounds = node["bounds"]
-            # bounds 格式 "[0,0][1080,2400]"
+            # bounds 格式 "(left,top,right,bottom)" 或 "[left,top][right,bottom]"
             import re
-            m = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", str(bounds))
+            m = re.match(r"[\(\[](\d+),(\d+)[,\)]\s*[\(\[]?(\d+),(\d+)[\)\]]?", str(bounds))
             if m:
                 result.append({
                     "bounds": {
