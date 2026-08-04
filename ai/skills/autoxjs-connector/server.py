@@ -26,6 +26,7 @@ import random
 import tempfile
 import argparse
 import threading
+from datetime import datetime
 from pathlib import Path
 
 try:
@@ -38,6 +39,12 @@ except ImportError:
 
 HANDSHAKE_TIMEOUT = 10
 VERSION = "1.0.0"
+
+
+def _ts() -> str:
+    """返回当前时间戳，格式: [2026/08/04 09:26:28.111]"""
+    now = datetime.now()
+    return f"[{now.strftime('%Y/%m/%d %H:%M:%S')}.{now.microsecond // 1000:03d}]"
 
 
 class Device:
@@ -209,10 +216,18 @@ class AutoJSServer:
 
         elif msg_type == "log":
             log_text = data.get("log", "")
+            print(f"{_ts()} [手机日志] {log_text}")
+            sys.stdout.flush()
             device.deliver_log(log_text)
 
         elif msg_type == "command_result":
             cid = data.get("command_id", "")
+            result = data.get("result", "")
+            if isinstance(result, str) and len(result) > 500:
+                print(f"{_ts()} ← 指令结果: {cid} (dump 内容, {len(result)} chars, 已省略)")
+            else:
+                print(f"{_ts()} ← 指令结果: {cid} -> {data}")
+            sys.stdout.flush()
             device.deliver_result(cid, data)
 
         elif msg_type == "ping":
@@ -244,6 +259,15 @@ class AutoJSServer:
             "message_id": cmd_id,
             "data": {"command": command, "id": cmd_id, **kwargs},
         }
+        safe_kwargs = {}
+        for k, v in kwargs.items():
+            v_str = str(v)
+            if len(v_str) > 200:
+                safe_kwargs[k] = f"<{len(v_str)} chars>"
+            else:
+                safe_kwargs[k] = v
+        print(f"{_ts()} → 发送指令: {command} (id={cmd_id}, params={safe_kwargs})")
+        sys.stdout.flush()
         await self.device.send_json(payload)
 
         if not _wait:
@@ -345,6 +369,8 @@ class AutoJSServer:
             return {"success": False, "error": str(e)}
 
         msg_id = f"{int(time.time()*1000)}_{random.random()}"
+        print(f"{_ts()} → 发送二进制指令: {command} (project={dir_name}, zip_size={len(zip_data)} bytes)")
+        sys.stdout.flush()
         await self.device.send_bytes(zip_data)
         await self.device.send_json({
             "type": "bytes_command",

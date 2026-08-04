@@ -244,10 +244,10 @@ function renderOverlay() {
       if (w <= 0 || h <= 0) return;
       componentList.push({ id: `ocr_${item.label}_${x}_${y}`, type: "ocr", label: item.label, bounds: { left: x, top: y, right: b.right, bottom: b.bottom } });
       ctx.strokeStyle = "#f44336"; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
-      ctx.fillStyle = "rgba(244, 67, 54, 0.7)"; ctx.font = "12px sans-serif";
+      ctx.fillStyle = "rgba(244, 67, 54, 0.7)"; ctx.font = "bold 16px sans-serif";
       const tw = ctx.measureText(item.label).width;
-      ctx.fillRect(x, y - 16, Math.min(tw + 6, w), 16);
-      ctx.fillStyle = "#fff"; ctx.fillText(item.label, x + 3, y - 4);
+      ctx.fillRect(x, y - 20, Math.min(tw + 6, w), 20);
+      ctx.fillStyle = "#fff"; ctx.fillText(item.label, x + 3, y - 5);
     });
   }
   if (showDump && dumpData) {
@@ -257,10 +257,10 @@ function renderOverlay() {
       const label = node.text || node.desc || node.className || ""; if (!label) return;
       componentList.push({ id: `dump_${label}_${x}_${y}`, type: "dump", label, bounds: { left: x, top: y, right: node._right, bottom: node._bottom } });
       ctx.strokeStyle = "#9c27b0"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 2]); ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
-      ctx.fillStyle = "rgba(156, 39, 176, 0.7)"; ctx.font = "11px sans-serif";
+      ctx.fillStyle = "rgba(156, 39, 176, 0.7)"; ctx.font = "bold 14px sans-serif";
       const tw = ctx.measureText(label).width;
-      ctx.fillRect(x, y - 15, Math.min(tw + 4, w), 15);
-      ctx.fillStyle = "#fff"; ctx.fillText(label, x + 2, y - 3);
+      ctx.fillRect(x, y - 18, Math.min(tw + 4, w), 18);
+      ctx.fillStyle = "#fff"; ctx.fillText(label, x + 2, y - 4);
     });
   }
 }
