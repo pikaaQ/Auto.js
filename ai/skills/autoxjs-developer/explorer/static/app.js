@@ -253,18 +253,23 @@ function renderOverlay() {
     });
   }
   if (showDump && dumpData) {
-    dumpData.forEach(node => {
-      const x = node._left, y = node._top, w = node._right - node._left, h = node._bottom - node._top;
+    // 按 depth 从小到大排序，depth 大的在上层（点击优先级高）
+    var sorted = dumpData.slice().sort(function(a, b) { return a.depth - b.depth; });
+    sorted.forEach(function(node) {
+      var x = node._left, y = node._top, w = node._right - node._left, h = node._bottom - node._top;
       if (w <= 0 || h <= 0) return;
-      const label = node.text || node.desc || node.className || ""; if (!label) return;
-      componentList.push({ id: `dump_${label}_${x}_${y}`, type: "dump", label, bounds: { left: x, top: y, right: node._right, bottom: node._bottom } });
+      var label = node.text || node.desc || "";
+      var fullLabel = (node.className || "") + " " + (node.text || "") + " " + (node.desc || "");
+      componentList.push({ id: "dump_" + (fullLabel.trim() || x + "_" + y), type: "dump", label: fullLabel.trim(), bounds: { left: x, top: y, right: node._right, bottom: node._bottom } });
       ctx.strokeStyle = "#9c27b0"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 2]); ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
-      var fs = Math.max(10, h / 2);
-      ctx.fillStyle = "rgba(156, 39, 176, 0.7)"; ctx.font = "bold " + fs + "px sans-serif";
-      var tw = ctx.measureText(label).width;
-      var bh = fs + 4;
-      ctx.fillRect(x, y - bh, Math.min(tw + 4, w), bh);
-      ctx.fillStyle = "#fff"; ctx.fillText(label, x + 2, y - 3);
+      if (label) {
+        var fs = Math.max(10, h / 2);
+        ctx.fillStyle = "rgba(156, 39, 176, 0.7)"; ctx.font = "bold " + fs + "px sans-serif";
+        var tw = ctx.measureText(label).width;
+        var bh = fs + 4;
+        ctx.fillRect(x, y - bh, Math.min(tw + 4, w), bh);
+        ctx.fillStyle = "#fff"; ctx.fillText(label, x + 2, y - 3);
+      }
     });
   }
 }
