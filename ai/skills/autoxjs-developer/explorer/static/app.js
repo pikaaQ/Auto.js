@@ -274,7 +274,7 @@ function renderOverlay() {
       const x = b.left, y = b.top, w = b.right - b.left, h = b.bottom - b.top;
       if (w <= 0 || h <= 0) return;
       componentList.push({ id: `ocr_${item.label}_${x}_${y}`, type: "ocr", label: item.label, bounds: { left: x, top: y, right: b.right, bottom: b.bottom } });
-ctx.strokeStyle = "#f44336"; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+ctx.strokeStyle = "#f44336"; ctx.lineWidth = 4; ctx.strokeRect(x, y, w, h);
       var fs = Math.max(10, h * 2 / 3);
       ctx.fillStyle = "rgba(244, 67, 54, 0.7)"; ctx.font = "bold " + fs + "px sans-serif";
       var tw = ctx.measureText(item.label).width;
@@ -297,7 +297,7 @@ ctx.strokeStyle = "#f44336"; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
       var label = node.text || node.desc || "";
       var fullLabel = (node.className || "") + " " + (node.text || "") + " " + (node.desc || "");
       componentList.push({ id: "dump_" + (fullLabel.trim() || x + "_" + y), type: "dump", label: fullLabel.trim(), bounds: { left: x, top: y, right: node._right, bottom: node._bottom } });
-      ctx.strokeStyle = "#9c27b0"; ctx.lineWidth = 1.5; ctx.setLineDash([4, 2]); ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
+      ctx.strokeStyle = "#9c27b0"; ctx.lineWidth = 3; ctx.setLineDash([4, 2]); ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
       if (label) {
         var fs = Math.max(10, Math.min(h / 2, 64));
         ctx.fillStyle = "rgba(156, 39, 176, 0.7)"; ctx.font = "bold " + fs + "px sans-serif";
@@ -313,8 +313,8 @@ ctx.strokeStyle = "#f44336"; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
     var b = selectedComponent.bounds;
     var x = b.left, y = b.top, w = b.right - b.left, h = b.bottom - b.top;
     if (w > 0 && h > 0) {
-      ctx.strokeStyle = "#00e676"; ctx.lineWidth = 4; ctx.strokeRect(x, y, w, h);
-      ctx.strokeStyle = "#fff"; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
+      ctx.strokeStyle = "#00e676"; ctx.lineWidth = 8; ctx.strokeRect(x, y, w, h);
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.setLineDash([4, 4]); ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
     }
   }
 }
