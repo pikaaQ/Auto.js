@@ -256,9 +256,8 @@ function setupCanvas() {
 }
 
 function toggleOverlay() {
+  clearTransitionForm();
   renderOverlay();
-  // 选中组件时更新表单
-  if (selectedComponent) updateTransitionForm(selectedComponent);
 }
 
 function renderOverlay() {
