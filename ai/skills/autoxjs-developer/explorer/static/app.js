@@ -547,7 +547,7 @@ function renderPicList() {
   picRects.forEach(function(r, i) {
     var d = document.createElement("div");
     d.className = "transition-item" + (i === selectedPicIdx ? " active" : "");
-    d.innerHTML = '<span style="font-size:12px;color:#ff9800;">🖼</span> <span style="flex:1;font-size:13px;margin:0 4px;">' + (r.label || "未命名") + '</span><span style="font-size:11px;color:#999;">' + r.left + "," + r.top + "</span>";
+    d.innerHTML = '<span style="font-size:12px;color:#ff9800;">🖼</span> <span style="flex:1;font-size:13px;margin:0 4px;">' + (r.label || "未命名") + '</span><span style="font-size:11px;color:#999;">' + r.left + "," + r.top + "</span><button class=\"del-btn\" onclick=\"event.stopPropagation();deletePicRect(" + i + ')" style="color:#f44336;background:none;border:none;cursor:pointer;font-size:16px;">×</button>';
     d.onclick = function() {
       selectedPicIdx = i;
       document.getElementById("pic-form").style.display = "block";
@@ -582,6 +582,18 @@ async function savePicRect() {
     renderOverlay();
     renderPicList();
     document.getElementById("pic-info").textContent = "已保存";
+  } catch (e) { alert(e.message); }
+}
+
+async function deletePicRect(index) {
+  if (!currentPageId || !projectPath) return;
+  picRects.splice(index, 1);
+  if (selectedPicIdx === index) selectedPicIdx = -1;
+  else if (selectedPicIdx > index) selectedPicIdx--;
+  try {
+    await api("POST", "/api/explore/pic", { action: "save", page_id: currentPageId, rects: picRects });
+    renderOverlay();
+    renderPicList();
   } catch (e) { alert(e.message); }
 }
 
